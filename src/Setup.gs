@@ -152,8 +152,8 @@ function setupSubscriptionsSheet_(ss, sheet) {
     // P: Сумма/мес
     sheet.getRange(row, COL.MONTHLY_COST + 1).setFormula(
       '=IF(H' + row + '="Активна",' +
-      'IF(REGEXMATCH(F' + row + '&"","^\\d+ мес\\.$"),' +
-      'D' + row + '/VALUE(REGEXEXTRACT(F' + row + '&"","^(\\d+)")),' +
+      'IF(ISNUMBER(VALUE(LEFT(F' + row + ',LEN(F' + row + ')-5))),' +
+      'D' + row + '/VALUE(LEFT(F' + row + ',LEN(F' + row + ')-5)),' +
       'SWITCH(F' + row + ',"Месяц",D' + row + ',"Квартал",D' + row + '/3,' +
       '"Полгода",D' + row + '/6,"Год",D' + row + '/12,"Неделя",D' + row + '*4.33,0)),0)'
     );
