@@ -41,7 +41,14 @@ function processAddForm(formData) {
 
     const nextDate = new Date(formData.nextDate);
 
-    sheet.appendRow([
+    // Найти первую пустую строку по колонке B (Название), начиная со строки 2
+    const nameCol = sheet.getRange(2, COL.NAME + 1, sheet.getMaxRows() - 1, 1).getValues();
+    let targetRow = 2;
+    for (let i = 0; i < nameCol.length; i++) {
+      if (!nameCol[i][0]) { targetRow = i + 2; break; }
+    }
+
+    sheet.getRange(targetRow, 1, 1, HEADERS_SUBSCRIPTIONS.length).setValues([[
       newId,
       formData.name,
       formData.category,
@@ -50,20 +57,19 @@ function processAddForm(formData) {
       formData.period,
       nextDate,
       formData.status || 'Активна',
-      '',                              // Последняя оплата
-      false,                           // Оплачено
+      '',                               // Последняя оплата
+      false,                            // Оплачено
       formData.notifications !== false, // Уведомления
       parseInt(formData.remindDays) || 3,
       formData.payer || '',
       formData.payMethod || '',
       formData.notes || '',
-      '',                              // Сумма/мес (formula)
-      '',                              // Дней до оплаты (formula)
-      ''                               // Calendar Event ID
-    ]);
+      '',                               // Сумма/мес (formula)
+      '',                               // Дней до оплаты (formula)
+      ''                                // Calendar Event ID
+    ]]);
 
-    // Установить формулы для новой строки
-    const lastRow = sheet.getLastRow();
+    const lastRow = targetRow;
     sheet.getRange(lastRow, COL.MONTHLY_COST + 1).setFormula(
       '=IF(H' + lastRow + '="Активна",' +
       'IF(ISNUMBER(VALUE(LEFT(F' + lastRow + ',LEN(F' + lastRow + ')-5))),' +
