@@ -1,0 +1,11 @@
+# clasp — contains your Google Script ID and Spreadsheet ID (keep private)
+.clasp.json
+
+# Claude Code local settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Node (if clasp installed locally)
+node_modules/

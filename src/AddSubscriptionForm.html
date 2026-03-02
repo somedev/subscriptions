@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #333;
+      padding: 16px;
+    }
+    h3 { margin-bottom: 16px; color: #1a73e8; }
+    .field { margin-bottom: 12px; }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 4px;
+      color: #555;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #1a73e8;
+    }
+    textarea { resize: vertical; min-height: 50px; }
+    .row { display: flex; gap: 8px; }
+    .row .field { flex: 1; }
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .checkbox-field input { width: auto; }
+    .btn {
+      display: inline-block;
+      padding: 10px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+    }
+    .btn-primary {
+      background: #1a73e8;
+      color: white;
+    }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled {
+      background: #dadce0;
+      cursor: not-allowed;
+    }
+    .status { margin-top: 8px; font-size: 12px; }
+    .status.success { color: #137333; }
+    .status.error { color: #c5221f; }
+  </style>
+</head>
+<body>
+  <h3>➕ Новая подписка</h3>
+
+  <div class="field">
+    <label>Название *</label>
+    <input type="text" id="name" placeholder="Netflix, Spotify...">
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Категория</label>
+      <select id="category"></select>
+    </div>
+    <div class="field">
+      <label>Статус</label>
+      <select id="status"></select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Сумма *</label>
+      <input type="number" id="amount" step="0.01" min="0">
+    </div>
+    <div class="field">
+      <label>Валюта</label>
+      <select id="currency"></select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Период</label>
+      <select id="period"></select>
+    </div>
+    <div class="field">
+      <label>Дата оплаты *</label>
+      <input type="date" id="nextDate">
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Кто платит</label>
+      <select id="payer"><option value="">—</option></select>
+    </div>
+    <div class="field">
+      <label>Способ оплаты</label>
+      <select id="payMethod"></select>
+    </div>
+  </div>
+
+  <div class="checkbox-field">
+    <input type="checkbox" id="notifications" checked>
+    <label for="notifications">Уведомления</label>
+  </div>
+
+  <div class="field">
+    <label>Дней до напоминания</label>
+    <input type="number" id="remindDays" value="3" min="0" max="30">
+  </div>
+
+  <div class="field">
+    <label>Примечания</label>
+    <textarea id="notes" placeholder="Заметки..."></textarea>
+  </div>
+
+  <button class="btn btn-primary" id="submitBtn" onclick="submitForm()">Добавить</button>
+  <div id="statusMsg" class="status"></div>
+
+  <script>
+    // Загрузить данные для выпадающих списков
+    google.script.run
+      .withSuccessHandler(populateForm)
+      .getFormData();
+
+    function populateForm(data) {
+      fillSelect('category', data.categories);
+      fillSelect('period', data.periods);
+      fillSelect('currency', data.currencies, data.defaultCurrency);
+      fillSelect('payMethod', data.payMethods);
+      fillSelect('status', data.statuses);
+      data.family.forEach(function(name) {
+        var opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        document.getElementById('payer').appendChild(opt);
+      });
+    }
+
+    function fillSelect(id, items, defaultVal) {
+      var sel = document.getElementById(id);
+      sel.innerHTML = '';
+      items.forEach(function(item) {
+        var opt = document.createElement('option');
+        opt.value = item;
+        opt.textContent = item;
+        if (defaultVal && item === defaultVal) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    function submitForm() {
+      var name = document.getElementById('name').value.trim();
+      var amount = document.getElementById('amount').value;
+      var nextDate = document.getElementById('nextDate').value;
+
+      if (!name || !amount || !nextDate) {
+        showStatus('Заполните обязательные поля (*)', 'error');
+        return;
+      }
+
+      var formData = {
+        name: name,
+        category: document.getElementById('category').value,
+        amount: amount,
+        currency: document.getElementById('currency').value,
+        period: document.getElementById('period').value,
+        nextDate: nextDate,
+        status: document.getElementById('status').value,
+        payer: document.getElementById('payer').value,
+        payMethod: document.getElementById('payMethod').value,
+        notifications: document.getElementById('notifications').checked,
+        remindDays: document.getElementById('remindDays').value,
+        notes: document.getElementById('notes').value
+      };
+
+      document.getElementById('submitBtn').disabled = true;
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onError)
+        .processAddForm(formData);
+    }
+
+    function onSuccess(result) {
+      document.getElementById('submitBtn').disabled = false;
+      if (result.success) {
+        showStatus('✅ Подписка добавлена!', 'success');
+        document.getElementById('name').value = '';
+        document.getElementById('amount').value = '';
+        document.getElementById('notes').value = '';
+      } else {
+        showStatus('❌ ' + result.error, 'error');
+      }
+    }
+
+    function onError(err) {
+      document.getElementById('submitBtn').disabled = false;
+      showStatus('❌ ' + err.message, 'error');
+    }
+
+    function showStatus(msg, type) {
+      var el = document.getElementById('statusMsg');
+      el.textContent = msg;
+      el.className = 'status ' + type;
+    }
+  </script>
+</body>
+</html>

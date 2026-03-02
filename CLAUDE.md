@@ -1,0 +1,157 @@
+# CLAUDE.md — Family Subscription Tracker
+
+## What is this project?
+
+A Google Sheets + Apps Script + Google Calendar system for tracking family subscriptions and recurring payments. All UI and content is in **Russian**.
+
+## Tech Stack
+
+- **Google Sheets** — data storage, formulas, conditional formatting
+- **Google Apps Script** (JavaScript ES6-compatible, V8 runtime) — automation, triggers, calendar sync, email notifications
+- **Google Calendar API** (via Apps Script CalendarApp) — push notifications on all devices
+- **HTML Service** (Apps Script) — sidebar forms for data entry
+
+## Project Structure
+
+```
+src/
+├── Code.gs              # Entry point: onOpen(), custom menu
+├── Config.gs            # Constants: sheet names, column indices, defaults
+├── Setup.gs             # initialSetup() — creates sheets, formatting, triggers
+├── DailyCheck.gs        # dailyCheck() — daily trigger, reminder logic
+├── CalendarSync.gs      # syncCalendar() — calendar CRUD
+├── PaymentConfirm.gs    # confirmPayment() — mark paid, log, advance date
+├── Notifications.gs     # sendReminder() — email notifications
+├── Statistics.gs        # updateStatistics() — dashboard refresh
+├── Utils.gs             # Helpers: addMonths(), getSettings(), etc.
+├── AddSubscription.gs   # Sidebar dialog for adding subscriptions
+src/html/
+└── AddSubscription.html # HTML form for the sidebar
+appsscript.json          # Manifest with scopes and timezone
+```
+
+## Key Design Decisions
+
+1. **All text in Russian** — sheet headers, menu items, email templates, calendar events, error messages, toast notifications — everything user-facing is in Russian
+2. **Checkbox-driven workflow** — user checks "Оплачено" checkbox → onEdit trigger fires → payment logged to history → next date calculated → checkbox unchecked automatically
+3. **Calendar as notification layer** — we create a dedicated calendar "💳 Подписки" and add all-day events with popup reminders so users get native push notifications on iPhone, Mac, and web
+4. **No external dependencies** — pure Apps Script, no npm packages, no external APIs
+5. **Script Properties for state** — use `PropertiesService.getScriptProperties()` to track last reminder dates and avoid duplicate notifications
+
+## Important Constants (Config.gs)
+
+```javascript
+const SHEET_SUBSCRIPTIONS = 'Подписки';
+const SHEET_HISTORY = 'История оплат';
+const SHEET_SETTINGS = 'Настройки';
+const SHEET_LOOKUPS = 'Справочники';
+
+// Column indices (0-based) for "Подписки" sheet
+const COL = {
+  ID: 0,              // A
+  NAME: 1,            // B - Название
+  CATEGORY: 2,        // C - Категория
+  AMOUNT: 3,          // D - Сумма
+  CURRENCY: 4,        // E - Валюта
+  PERIOD: 5,          // F - Период
+  NEXT_DATE: 6,       // G - Дата следующей оплаты
+  STATUS: 7,          // H - Статус
+  LAST_PAID: 8,       // I - Последняя оплата
+  IS_PAID: 9,         // J - Оплачено (checkbox)
+  NOTIFICATIONS: 10,  // K - Уведомления
+  REMIND_DAYS: 11,    // L - Дней до напоминания
+  PAYER: 12,          // M - Кто платит
+  PAY_METHOD: 13,     // N - Способ оплаты
+  NOTES: 14,          // O - Примечания
+  MONTHLY_COST: 15,   // P - Сумма/мес (formula)
+  DAYS_UNTIL: 16,     // Q - Дней до оплаты (formula)
+  CALENDAR_ID: 17     // R - Calendar Event ID (hidden)
+};
+```
+
+## Common Patterns
+
+### Getting a sheet
+```javascript
+const ss = SpreadsheetApp.getActiveSpreadsheet();
+const sheet = ss.getSheetByName(SHEET_SUBSCRIPTIONS);
+```
+
+### Reading subscription data
+```javascript
+const data = sheet.getDataRange().getValues();
+const headers = data[0];
+// data[1] onward = subscription rows
+for (let i = 1; i < data.length; i++) {
+  const row = data[i];
+  if (!row[COL.NAME]) continue; // skip empty rows
+  const name = row[COL.NAME];
+  const amount = row[COL.AMOUNT];
+  // ...
+}
+```
+
+### Date arithmetic (month-safe)
+```javascript
+function addMonths(date, months) {
+  const result = new Date(date);
+  const day = result.getDate();
+  result.setMonth(result.getMonth() + months);
+  // Handle month-end overflow (e.g., Jan 31 + 1 month)
+  if (result.getDate() !== day) {
+    result.setDate(0); // Go to last day of previous month
+  }
+  return result;
+}
+```
+
+### Calendar event creation
+```javascript
+const calendar = CalendarApp.getCalendarsByName(calendarName)[0];
+const event = calendar.createAllDayEvent(title, date);
+event.setDescription(description);
+event.removeAllReminders();
+event.addPopupReminder(daysBeforeInMinutes); // e.g., 3 days = 4320 min
+event.addPopupReminder(0); // on the day
+```
+
+## Testing
+
+- Run `initialSetup()` first — it creates everything
+- Add test subscriptions manually or via sidebar
+- Check "Оплачено" on a test row — verify history log and date advance
+- Run `syncCalendar()` — verify calendar events created
+- Run `dailyCheck()` manually — check email delivery
+- Verify conditional formatting colors
+
+## Gotchas & Tips
+
+- Apps Script uses **server-side JavaScript** — no DOM, no `window`, no `fetch`. Use `UrlFetchApp` for HTTP calls
+- `onEdit()` simple trigger can't access services requiring authorization. Use an **installable** onEdit trigger instead
+- `MailApp.sendEmail()` has a daily quota: 100 emails for free accounts, 1500 for Workspace
+- Calendar popup reminders are specified in **minutes** (3 days = 3 * 24 * 60 = 4320 minutes)
+- `CalendarApp.getCalendarsByName()` returns an array — always use `[0]`
+- When hiding a column: `sheet.hideColumns(columnIndex)` — 1-based index
+- Dates in Sheets come as JavaScript `Date` objects when read via `getValues()`
+- For checkboxes, use `sheet.insertCheckboxes()` or data validation with TRUE/FALSE
+- Always use `Utilities.formatDate(date, 'Europe/Moscow', 'dd.MM.yyyy')` for Russian date formatting
+
+## Scope Boundaries
+
+**In scope (v1):**
+- CRUD for subscriptions (add, edit via sheet, delete by changing status)
+- Manual payment confirmation via checkbox
+- Payment history log
+- Calendar sync with push reminders
+- Email notifications
+- Statistics dashboard
+- Conditional formatting
+- Russian localization
+
+**Out of scope (v2+):**
+- Web App standalone UI
+- Telegram bot
+- Currency conversion
+- Charts/graphs
+- Bank CSV import
+- Budget threshold alerts
