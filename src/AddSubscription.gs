@@ -65,9 +65,11 @@ function processAddForm(formData) {
     // Установить формулы для новой строки
     const lastRow = sheet.getLastRow();
     sheet.getRange(lastRow, COL.MONTHLY_COST + 1).setFormula(
-      '=IF(H' + lastRow + '="Активна", SWITCH(F' + lastRow + ', "Месяц",D' + lastRow +
-      ', "Квартал",D' + lastRow + '/3, "Полгода",D' + lastRow + '/6, "Год",D' + lastRow +
-      '/12, "Неделя",D' + lastRow + '*4.33, 0), 0)'
+      '=IF(H' + lastRow + '="Активна",' +
+      'IF(REGEXMATCH(F' + lastRow + '&"","^\\d+ мес\\.$"),' +
+      'D' + lastRow + '/VALUE(REGEXEXTRACT(F' + lastRow + '&"","^(\\d+)")),' +
+      'SWITCH(F' + lastRow + ',"Месяц",D' + lastRow + ',"Квартал",D' + lastRow + '/3,' +
+      '"Полгода",D' + lastRow + '/6,"Год",D' + lastRow + '/12,"Неделя",D' + lastRow + '*4.33,0)),0)'
     );
     sheet.getRange(lastRow, COL.DAYS_UNTIL + 1).setFormula(
       '=IF(AND(H' + lastRow + '="Активна", G' + lastRow + '<>""), G' + lastRow + '-TODAY(), "")'

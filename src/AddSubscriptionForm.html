@@ -96,12 +96,17 @@
   <div class="row">
     <div class="field">
       <label>Период</label>
-      <select id="period"></select>
+      <select id="period" onchange="onPeriodChange()"></select>
     </div>
     <div class="field">
       <label>Дата оплаты *</label>
       <input type="date" id="nextDate">
     </div>
+  </div>
+
+  <div class="field" id="customMonthsField" style="display:none">
+    <label>Каждые N месяцев</label>
+    <input type="number" id="customMonths" value="2" min="1" max="60">
   </div>
 
   <div class="row">
@@ -142,6 +147,11 @@
     function populateForm(data) {
       fillSelect('category', data.categories);
       fillSelect('period', data.periods);
+      // Добавить опцию произвольного периода
+      var opt = document.createElement('option');
+      opt.value = '__custom__';
+      opt.textContent = 'Свой период (N мес.)...';
+      document.getElementById('period').appendChild(opt);
       fillSelect('currency', data.currencies, data.defaultCurrency);
       fillSelect('payMethod', data.payMethods);
       fillSelect('status', data.statuses);
@@ -165,6 +175,11 @@
       });
     }
 
+    function onPeriodChange() {
+      var isCustom = document.getElementById('period').value === '__custom__';
+      document.getElementById('customMonthsField').style.display = isCustom ? 'block' : 'none';
+    }
+
     function submitForm() {
       var name = document.getElementById('name').value.trim();
       var amount = document.getElementById('amount').value;
@@ -175,12 +190,19 @@
         return;
       }
 
+      var periodVal = document.getElementById('period').value;
+      if (periodVal === '__custom__') {
+        var n = parseInt(document.getElementById('customMonths').value);
+        if (!n || n < 1) { showStatus('Укажите количество месяцев', 'error'); return; }
+        periodVal = n + ' мес.';
+      }
+
       var formData = {
         name: name,
         category: document.getElementById('category').value,
         amount: amount,
         currency: document.getElementById('currency').value,
-        period: document.getElementById('period').value,
+        period: periodVal,
         nextDate: nextDate,
         status: document.getElementById('status').value,
         payer: document.getElementById('payer').value,

@@ -151,9 +151,11 @@ function setupSubscriptionsSheet_(ss, sheet) {
   for (let row = 2; row <= 100; row++) {
     // P: Сумма/мес
     sheet.getRange(row, COL.MONTHLY_COST + 1).setFormula(
-      '=IF(H' + row + '="Активна", SWITCH(F' + row + ', "Месяц",D' + row +
-      ', "Квартал",D' + row + '/3, "Полгода",D' + row + '/6, "Год",D' + row +
-      '/12, "Неделя",D' + row + '*4.33, 0), 0)'
+      '=IF(H' + row + '="Активна",' +
+      'IF(REGEXMATCH(F' + row + '&"","^\\d+ мес\\.$"),' +
+      'D' + row + '/VALUE(REGEXEXTRACT(F' + row + '&"","^(\\d+)")),' +
+      'SWITCH(F' + row + ',"Месяц",D' + row + ',"Квартал",D' + row + '/3,' +
+      '"Полгода",D' + row + '/6,"Год",D' + row + '/12,"Неделя",D' + row + '*4.33,0)),0)'
     );
     // Q: Дней до оплаты
     sheet.getRange(row, COL.DAYS_UNTIL + 1).setFormula(
@@ -192,7 +194,7 @@ function setupDropdownValidation_(subSheet, lookSheet) {
   // F — Период
   const perRule = SpreadsheetApp.newDataValidation()
     .requireValueInRange(lookSheet.getRange('B2:B' + (LOOKUP_PERIODS.length + 1)), true)
-    .setAllowInvalid(false)
+    .setAllowInvalid(true)  // Разрешить произвольные периоды вида "N мес."
     .build();
   subSheet.getRange(2, COL.PERIOD + 1, lastRow - 1, 1).setDataValidation(perRule);
 

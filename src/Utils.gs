@@ -32,8 +32,12 @@ function calculateNextDate(currentDate, period) {
       return addMonths(date, 6);
     case 'Год':
       return addMonths(date, 12);
-    default:
+    default: {
+      // Произвольный период: "N мес." (например, "2 мес.", "5 мес.")
+      const m = period.match(/^(\d+)\s*мес\.?$/);
+      if (m) return addMonths(date, parseInt(m[1]));
       return addMonths(date, 1);
+    }
   }
 }
 
