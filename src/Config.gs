@@ -56,7 +56,7 @@ const SETTINGS_DEFAULTS = [
   '',
   '09:00',
   '',
-  'RUB'
+  'BYN'
 ];
 
 // Справочники
@@ -67,7 +67,7 @@ const LOOKUP_CATEGORIES = [
 
 const LOOKUP_PERIODS = ['Месяц', 'Квартал', 'Полгода', 'Год', 'Неделя'];
 
-const LOOKUP_CURRENCIES = ['RUB', 'USD', 'EUR'];
+const LOOKUP_CURRENCIES = ['BYN', 'RUB', 'USD', 'EUR'];
 
 const LOOKUP_PAY_METHODS = ['Карта', 'Автосписание', 'Перевод', 'Наличные'];
 
