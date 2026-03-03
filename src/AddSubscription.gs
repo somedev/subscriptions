@@ -72,10 +72,9 @@ function processAddForm(formData) {
     const lastRow = targetRow;
     sheet.getRange(lastRow, COL.MONTHLY_COST + 1).setFormula(
       '=IF(H' + lastRow + '="Активна";' +
-      'IF(ISNUMBER(VALUE(LEFT(F' + lastRow + ';LEN(F' + lastRow + ')-5)));' +
-      'D' + lastRow + '/VALUE(LEFT(F' + lastRow + ';LEN(F' + lastRow + ')-5));' +
       'SWITCH(F' + lastRow + ';"Месяц";D' + lastRow + ';"Квартал";D' + lastRow + '/3;' +
-      '"Полгода";D' + lastRow + '/6;"Год";D' + lastRow + '/12;"Неделя";D' + lastRow + '*4,33;0));0)'
+      '"Полгода";D' + lastRow + '/6;"Год";D' + lastRow + '/12;"Неделя";D' + lastRow + '*4,33;' +
+      'IFERROR(D' + lastRow + '/VALUE(LEFT(F' + lastRow + ';LEN(F' + lastRow + ')-5));0));0)'
     );
     sheet.getRange(lastRow, COL.DAYS_UNTIL + 1).setFormula(
       '=IF(AND(H' + lastRow + '="Активна"; G' + lastRow + '<>""); G' + lastRow + '-TODAY(); "")'
