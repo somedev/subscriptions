@@ -31,7 +31,7 @@ function updateStatistics() {
     // Общая сумма/мес
     sheet.getRange(row, 1).setValue('Общая сумма/мес:');
     sheet.getRange(row, 2).setFormula(
-      '=SUMIF(H2:H' + lastDataRow + ',"Активна",P2:P' + lastDataRow + ')'
+      '=SUMIF(H2:H' + lastDataRow + ';"Активна";P2:P' + lastDataRow + ')'
     );
     sheet.getRange(row, 1).setFontWeight('bold');
     row++;
@@ -39,7 +39,7 @@ function updateStatistics() {
     // Общая сумма/год
     sheet.getRange(row, 1).setValue('Общая сумма/год:');
     sheet.getRange(row, 2).setFormula(
-      '=SUMIF(H2:H' + lastDataRow + ',"Активна",P2:P' + lastDataRow + ')*12'
+      '=SUMIF(H2:H' + lastDataRow + ';"Активна";P2:P' + lastDataRow + ')*12'
     );
     sheet.getRange(row, 1).setFontWeight('bold');
     row++;
@@ -47,14 +47,14 @@ function updateStatistics() {
     // Всего активных подписок
     sheet.getRange(row, 1).setValue('Активных подписок:');
     sheet.getRange(row, 2).setFormula(
-      '=COUNTIF(H2:H' + lastDataRow + ',"Активна")'
+      '=COUNTIF(H2:H' + lastDataRow + ';"Активна")'
     );
     row++;
 
     // Оплачено за текущий месяц (из Истории оплат)
     sheet.getRange(row, 1).setValue('Оплачено за месяц:');
     sheet.getRange(row, 2).setFormula(
-      '=SUMPRODUCT((\'' + SHEET_HISTORY + '\'!D2:D1000>=DATE(YEAR(TODAY()),MONTH(TODAY()),1))*' +
+      '=SUMPRODUCT((\'' + SHEET_HISTORY + '\'!D2:D1000>=DATE(YEAR(TODAY());MONTH(TODAY());1))*' +
       '(\'' + SHEET_HISTORY + '\'!E2:E1000))'
     );
     row += 2;
@@ -67,7 +67,7 @@ function updateStatistics() {
     for (const category of LOOKUP_CATEGORIES) {
       sheet.getRange(row, 1).setValue('  ' + category + ':');
       sheet.getRange(row, 2).setFormula(
-        '=SUMIFS(P2:P' + lastDataRow + ',H2:H' + lastDataRow + ',"Активна",C2:C' + lastDataRow + ',"' + category + '")'
+        '=SUMIFS(P2:P' + lastDataRow + ';H2:H' + lastDataRow + ';"Активна";C2:C' + lastDataRow + ';"' + category + '")'
       );
       row++;
     }
@@ -88,7 +88,7 @@ function updateStatistics() {
     for (const payer of payers) {
       sheet.getRange(row, 1).setValue('  ' + payer + ':');
       sheet.getRange(row, 2).setFormula(
-        '=SUMIFS(P2:P' + lastDataRow + ',H2:H' + lastDataRow + ',"Активна",M2:M' + lastDataRow + ',"' + payer + '")'
+        '=SUMIFS(P2:P' + lastDataRow + ';H2:H' + lastDataRow + ';"Активна";M2:M' + lastDataRow + ';"' + payer + '")'
       );
       row++;
     }

@@ -151,15 +151,15 @@ function setupSubscriptionsSheet_(ss, sheet) {
   for (let row = 2; row <= 100; row++) {
     // P: Сумма/мес
     sheet.getRange(row, COL.MONTHLY_COST + 1).setFormula(
-      '=IF(H' + row + '="Активна",' +
-      'IF(ISNUMBER(VALUE(LEFT(F' + row + ',LEN(F' + row + ')-5))),' +
-      'D' + row + '/VALUE(LEFT(F' + row + ',LEN(F' + row + ')-5)),' +
-      'SWITCH(F' + row + ',"Месяц",D' + row + ',"Квартал",D' + row + '/3,' +
-      '"Полгода",D' + row + '/6,"Год",D' + row + '/12,"Неделя",D' + row + '*4.33,0)),0)'
+      '=IF(H' + row + '="Активна";' +
+      'IF(ISNUMBER(VALUE(LEFT(F' + row + ';LEN(F' + row + ')-5)));' +
+      'D' + row + '/VALUE(LEFT(F' + row + ';LEN(F' + row + ')-5));' +
+      'SWITCH(F' + row + ';"Месяц";D' + row + ';"Квартал";D' + row + '/3;' +
+      '"Полгода";D' + row + '/6;"Год";D' + row + '/12;"Неделя";D' + row + '*4,33;0));0)'
     );
     // Q: Дней до оплаты
     sheet.getRange(row, COL.DAYS_UNTIL + 1).setFormula(
-      '=IF(AND(H' + row + '="Активна", G' + row + '<>""), G' + row + '-TODAY(), "")'
+      '=IF(AND(H' + row + '="Активна"; G' + row + '<>""); G' + row + '-TODAY(); "")'
     );
   }
 
