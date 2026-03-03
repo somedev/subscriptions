@@ -14,6 +14,7 @@ function initialSetup() {
     const histSheet = createSheetIfNotExists_(ss, SHEET_HISTORY);
     const settSheet = createSheetIfNotExists_(ss, SHEET_SETTINGS);
     const lookSheet = createSheetIfNotExists_(ss, SHEET_LOOKUPS);
+    createSheetIfNotExists_(ss, SHEET_STATISTICS);
 
     // 2. Заполнить справочники
     setupLookups_(lookSheet);
@@ -32,7 +33,10 @@ function initialSetup() {
     const calendarName = settings['Название календаря'] || '💳 Подписки';
     getOrCreateCalendar(calendarName);
 
-    // 7. Настроить триггеры
+    // 7. Заполнить статистику
+    updateStatistics();
+
+    // 8. Настроить триггеры
     setupTriggers_();
 
     ui.alert('✅ Настройка завершена! Календарь создан, триггеры установлены.');
@@ -83,6 +87,29 @@ function setupLookups_(sheet) {
     if (i < LOOKUP_PAY_METHODS.length) sheet.getRange(row, 4).setValue(LOOKUP_PAY_METHODS[i]);
     if (i < LOOKUP_STATUSES.length) sheet.getRange(row, 5).setValue(LOOKUP_STATUSES[i]);
   }
+
+  // Курсы валют (колонки G-H) — автообновление через GOOGLEFINANCE
+  const defCurrency = (getSettings()['Валюта по умолчанию'] || 'BYN').trim();
+  sheet.getRange(1, 7, 1, 2).setValues([['Валюта', 'Курс к ' + defCurrency]]);
+  sheet.getRange(1, 7, 1, 2)
+    .setFontWeight('bold')
+    .setBackground('#4A86C8')
+    .setFontColor('#FFFFFF');
+
+  for (let i = 0; i < LOOKUP_CURRENCIES.length; i++) {
+    const cur = LOOKUP_CURRENCIES[i];
+    const row = i + 2;
+    sheet.getRange(row, 7).setValue(cur);
+    if (cur === defCurrency) {
+      sheet.getRange(row, 8).setValue(1);
+    } else {
+      sheet.getRange(row, 8).setFormula(
+        '=IFERROR(GOOGLEFINANCE("CURRENCY:' + cur + defCurrency + '");1)'
+      );
+    }
+  }
+  sheet.setColumnWidth(7, 80);
+  sheet.setColumnWidth(8, 100);
 }
 
 /**

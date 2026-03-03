@@ -5,6 +5,7 @@ const SHEET_SUBSCRIPTIONS = 'Подписки';
 const SHEET_HISTORY = 'История оплат';
 const SHEET_SETTINGS = 'Настройки';
 const SHEET_LOOKUPS = 'Справочники';
+const SHEET_STATISTICS = '📊 Статистика';
 
 // Индексы колонок (0-based) для листа "Подписки"
 const COL = {
@@ -75,6 +76,7 @@ const LOOKUP_STATUSES = ['Активна', 'Приостановлена', 'От
 
 // Заголовки справочников
 const HEADERS_LOOKUPS = ['Категории', 'Периоды', 'Валюты', 'Способы оплаты', 'Статусы'];
+
 
 // Ширины колонок листа "Подписки" (в пикселях)
 const COLUMN_WIDTHS = {
