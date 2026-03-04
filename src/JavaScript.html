@@ -1,0 +1,563 @@
+<script>
+// ==================== State ====================
+var state = {
+  subscriptions: null,
+  stats: null,
+  history: null,
+  settings: null,
+  currentEditRow: null,
+  currentView: null,
+  dataLoaded: false
+};
+
+// ==================== Loading & Toast ====================
+function showLoading() {
+  document.getElementById('loading').classList.remove('hidden');
+}
+
+function hideLoading() {
+  document.getElementById('loading').classList.add('hidden');
+}
+
+function showToast(msg, type) {
+  var toast = document.getElementById('toast');
+  toast.className = 'toast' + (type ? ' toast-' + type : '');
+  toast.textContent = msg;
+  toast.classList.remove('hidden');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function() { toast.classList.add('hidden'); }, 3000);
+}
+
+function showError(containerId, msg) {
+  var el = document.getElementById(containerId);
+  if (el) el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>' + escHtml(msg) + '</p></div>';
+}
+
+// ==================== Data Loading (single call) ====================
+function loadAllData(callback) {
+  if (state.dataLoaded) {
+    if (callback) callback();
+    return;
+  }
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function(data) {
+      state.subscriptions = data.subscriptions || [];
+      state.stats = data.stats;
+      state.history = data.history || [];
+      state.settings = data.settings;
+      state.dataLoaded = true;
+      hideLoading();
+      if (callback) callback();
+    })
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showError('subscriptions-list', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная'));
+    })
+    .getAllDataApi();
+}
+
+function refreshData(callback) {
+  state.dataLoaded = false;
+  loadAllData(callback);
+}
+
+// ==================== Routing ====================
+function navigate(route) {
+  route = route.replace('#/', '').replace('#', '');
+  var parts = route.split('/');
+  var view = parts[0] || 'subscriptions';
+  var param = parts[1];
+  showView(view, param);
+}
+
+function showView(view, param) {
+  var views = document.querySelectorAll('.view');
+  for (var i = 0; i < views.length; i++) views[i].classList.add('hidden');
+
+  var title = document.getElementById('header-title');
+  var action = document.getElementById('header-action');
+  action.classList.add('hidden');
+
+  var tabs = document.querySelectorAll('.nav-tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+
+  state.currentView = view;
+
+  switch (view) {
+    case 'subscriptions':
+      document.getElementById('view-subscriptions').classList.remove('hidden');
+      title.textContent = '💳 Подписки';
+      action.classList.remove('hidden');
+      setActiveTab('subscriptions');
+      loadAllData(function() { renderSubscriptions(state.subscriptions); });
+      break;
+    case 'add':
+      document.getElementById('view-form').classList.remove('hidden');
+      title.textContent = '➕ Новая подписка';
+      setActiveTab('form');
+      state.currentEditRow = null;
+      resetForm();
+      loadAllData(function() { populateFormOptions(state.settings); });
+      break;
+    case 'edit':
+      document.getElementById('view-form').classList.remove('hidden');
+      title.textContent = '✏️ Редактирование';
+      state.currentEditRow = parseInt(param);
+      loadAllData(function() {
+        populateFormOptions(state.settings);
+        loadEditData(state.currentEditRow);
+      });
+      break;
+    case 'stats':
+      document.getElementById('view-stats').classList.remove('hidden');
+      title.textContent = '📊 Статистика';
+      setActiveTab('stats');
+      loadAllData(function() {
+        try { renderStats(state.stats, state.history); }
+        catch (e) { showError('stats-content', 'Ошибка: ' + e.message); }
+      });
+      break;
+    case 'settings':
+      document.getElementById('view-settings').classList.remove('hidden');
+      title.textContent = '⚙️ Настройки';
+      setActiveTab('settings');
+      loadAllData(function() {
+        try { renderSettings(state.settings); }
+        catch (e) { showError('settings-content', 'Ошибка: ' + e.message); }
+      });
+      break;
+    default:
+      showView('subscriptions');
+  }
+}
+
+function setActiveTab(view) {
+  var tabs = document.querySelectorAll('.nav-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    if (tabs[i].getAttribute('data-view') === view) {
+      tabs[i].classList.add('active');
+    }
+  }
+}
+
+// ==================== Subscriptions List ====================
+function renderSubscriptions(subs) {
+  var container = document.getElementById('subscriptions-list');
+
+  if (!subs || subs.length === 0) {
+    container.innerHTML =
+      '<div class="empty-state">' +
+        '<div class="empty-icon">📋</div>' +
+        '<p>Нет подписок</p>' +
+        '<button class="btn btn-primary" onclick="navigate(\'add\')">Добавить первую</button>' +
+      '</div>';
+    return;
+  }
+
+  var overdue = [], soon = [], active = [], inactive = [];
+  for (var i = 0; i < subs.length; i++) {
+    var s = subs[i];
+    if (s.status !== 'Активна') { inactive.push(s); }
+    else if (s.daysUntil !== null && s.daysUntil < 0) { overdue.push(s); }
+    else if (s.daysUntil !== null && s.daysUntil <= 3) { soon.push(s); }
+    else { active.push(s); }
+  }
+
+  var html = '';
+  if (overdue.length) {
+    html += '<div class="section-title">🔴 Просрочено</div>';
+    for (var i = 0; i < overdue.length; i++) html += renderCard(overdue[i], 'overdue');
+  }
+  if (soon.length) {
+    html += '<div class="section-title">🟡 Скоро</div>';
+    for (var i = 0; i < soon.length; i++) html += renderCard(soon[i], 'soon');
+  }
+  if (active.length) {
+    html += '<div class="section-title">🟢 Активные</div>';
+    for (var i = 0; i < active.length; i++) html += renderCard(active[i], '');
+  }
+  if (inactive.length) {
+    html += '<div class="section-title">⏸ Неактивные</div>';
+    for (var i = 0; i < inactive.length; i++) html += renderCard(inactive[i], 'inactive');
+  }
+
+  container.innerHTML = html;
+}
+
+function renderCard(s, cls) {
+  var dateStr = s.nextDate ? formatDateLocal(s.nextDate) : '—';
+  var dateClass = '';
+  if (s.daysUntil !== null && s.daysUntil < 0) dateClass = ' overdue';
+  else if (s.daysUntil !== null && s.daysUntil <= 3) dateClass = ' soon';
+
+  var daysText = '';
+  if (s.daysUntil !== null) {
+    if (s.daysUntil < 0) daysText = ' (просрочено ' + Math.abs(s.daysUntil) + ' дн.)';
+    else if (s.daysUntil === 0) daysText = ' (сегодня)';
+    else if (s.daysUntil === 1) daysText = ' (завтра)';
+    else daysText = ' (через ' + s.daysUntil + ' дн.)';
+  }
+
+  var payBtn = '';
+  if (s.status === 'Активна') {
+    payBtn = '<button class="btn-pay" onclick="handlePay(event, ' + s.rowIndex + ')" id="pay-' + s.rowIndex + '">✅ Оплачено</button>';
+  }
+
+  return '<div class="card ' + cls + '" onclick="navigate(\'edit/' + s.rowIndex + '\')">' +
+    '<div class="card-top">' +
+      '<span class="card-name">' + escHtml(s.name) + '</span>' +
+      '<span class="card-amount">' + formatAmount(s.amount) + ' ' + escHtml(s.currency) + '</span>' +
+    '</div>' +
+    '<div class="card-meta">' +
+      (s.category ? '<span class="badge">' + escHtml(s.category) + '</span>' : '') +
+      '<span class="card-period">' + escHtml(s.period) + '</span>' +
+      (s.payer ? '<span class="card-payer">👤 ' + escHtml(s.payer) + '</span>' : '') +
+    '</div>' +
+    '<div class="card-bottom">' +
+      '<span class="card-date' + dateClass + '">' + dateStr + daysText + '</span>' +
+      payBtn +
+    '</div>' +
+  '</div>';
+}
+
+// ==================== Mark as Paid ====================
+function handlePay(e, rowIndex) {
+  e.stopPropagation();
+  var btn = document.getElementById('pay-' + rowIndex);
+  if (!btn) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  btn.classList.add('paid');
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      showToast('✅ ' + result.name + ' оплачено', 'success');
+      // Refresh data and re-render
+      refreshData(function() {
+        if (state.currentView === 'subscriptions') renderSubscriptions(state.subscriptions);
+      });
+    })
+    .withFailureHandler(function(err) {
+      showToast('Ошибка: ' + (err && err.message ? err.message : 'неизвестная'), 'error');
+      btn.disabled = false;
+      btn.textContent = '✅ Оплачено';
+      btn.classList.remove('paid');
+    })
+    .markAsPaidApi(rowIndex);
+}
+
+// ==================== Add/Edit Form ====================
+function resetForm() {
+  document.getElementById('sub-form').reset();
+  document.getElementById('f-notify').checked = true;
+  document.getElementById('form-delete').classList.add('hidden');
+  document.getElementById('form-submit').textContent = '💾 Сохранить';
+
+  var today = new Date();
+  document.getElementById('f-date').value = today.toISOString().split('T')[0];
+}
+
+function populateFormOptions(s) {
+  if (!s) return;
+  fillSelect('f-category', s.categories);
+  fillSelect('f-currency', s.currencies, s.defaultCurrency);
+  fillSelect('f-period', s.periods);
+
+  var payerSel = document.getElementById('f-payer');
+  payerSel.innerHTML = '<option value="">—</option>';
+  for (var i = 0; i < s.family.length; i++) {
+    payerSel.innerHTML += '<option value="' + escAttr(s.family[i]) + '">' + escHtml(s.family[i]) + '</option>';
+  }
+
+  var methodSel = document.getElementById('f-method');
+  methodSel.innerHTML = '<option value="">—</option>';
+  for (var i = 0; i < s.payMethods.length; i++) {
+    methodSel.innerHTML += '<option value="' + escAttr(s.payMethods[i]) + '">' + escHtml(s.payMethods[i]) + '</option>';
+  }
+}
+
+function fillSelect(id, options, defaultVal) {
+  var sel = document.getElementById(id);
+  sel.innerHTML = '';
+  for (var i = 0; i < options.length; i++) {
+    var opt = document.createElement('option');
+    opt.value = options[i];
+    opt.textContent = options[i];
+    if (options[i] === defaultVal) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function loadEditData(rowIndex) {
+  // Find subscription in cached data
+  var sub = null;
+  if (state.subscriptions) {
+    for (var i = 0; i < state.subscriptions.length; i++) {
+      if (state.subscriptions[i].rowIndex === rowIndex) {
+        sub = state.subscriptions[i];
+        break;
+      }
+    }
+  }
+
+  if (sub) {
+    fillEditForm(sub);
+  } else {
+    // Fallback: fetch from server
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function(s) { hideLoading(); fillEditForm(s); })
+      .withFailureHandler(function(e) {
+        hideLoading();
+        showToast('Ошибка загрузки', 'error');
+        navigate('subscriptions');
+      })
+      .getSubscriptionApi(rowIndex);
+  }
+}
+
+function fillEditForm(sub) {
+  document.getElementById('f-name').value = sub.name;
+  document.getElementById('f-category').value = sub.category;
+  document.getElementById('f-amount').value = sub.amount;
+  document.getElementById('f-currency').value = sub.currency;
+  document.getElementById('f-period').value = sub.period;
+  if (sub.nextDate) {
+    document.getElementById('f-date').value = sub.nextDate.split('T')[0];
+  }
+  document.getElementById('f-notify').checked = sub.notify;
+  document.getElementById('f-payer').value = sub.payer || '';
+  document.getElementById('f-method').value = sub.payMethod || '';
+  document.getElementById('f-notes').value = sub.notes || '';
+  document.getElementById('form-delete').classList.remove('hidden');
+}
+
+function handleFormSubmit(e) {
+  e.preventDefault();
+
+  var name = document.getElementById('f-name').value.trim();
+  var amount = parseFloat(document.getElementById('f-amount').value);
+  var date = document.getElementById('f-date').value;
+
+  if (!name) { showToast('Введите название', 'error'); return; }
+  if (!amount || amount <= 0) { showToast('Сумма должна быть больше 0', 'error'); return; }
+  if (!date) { showToast('Укажите дату оплаты', 'error'); return; }
+
+  var data = {
+    name: name,
+    category: document.getElementById('f-category').value,
+    amount: amount,
+    currency: document.getElementById('f-currency').value,
+    period: document.getElementById('f-period').value,
+    nextDate: date,
+    notify: document.getElementById('f-notify').checked,
+    remindDays: 3,
+    payer: document.getElementById('f-payer').value,
+    payMethod: document.getElementById('f-method').value,
+    notes: document.getElementById('f-notes').value.trim()
+  };
+
+  showLoading();
+
+  function onSuccess() {
+    hideLoading();
+    showToast('Подписка сохранена', 'success');
+    refreshData(function() { navigate('subscriptions'); });
+  }
+  function onError(err) {
+    hideLoading();
+    showToast('Ошибка: ' + (err && err.message ? err.message : 'неизвестная'), 'error');
+  }
+
+  if (state.currentEditRow) {
+    google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError)
+      .updateSubscriptionApi(state.currentEditRow, data);
+  } else {
+    google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError)
+      .addSubscriptionApi(data);
+  }
+}
+
+function handleDelete() {
+  if (!state.currentEditRow) return;
+  showConfirmDialog('Удалить подписку?', 'Это действие нельзя отменить.', function() {
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function() {
+        hideLoading();
+        showToast('Подписка удалена', 'success');
+        refreshData(function() { navigate('subscriptions'); });
+      })
+      .withFailureHandler(function(e) {
+        hideLoading();
+        showToast('Ошибка: ' + (e && e.message ? e.message : 'неизвестная'), 'error');
+      })
+      .deleteSubscriptionApi(state.currentEditRow);
+  });
+}
+
+function showConfirmDialog(title, msg, onConfirm) {
+  var overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  overlay.innerHTML =
+    '<div class="dialog">' +
+      '<h3>' + escHtml(title) + '</h3>' +
+      '<p>' + escHtml(msg) + '</p>' +
+      '<div class="dialog-actions">' +
+        '<button class="dialog-cancel">Отмена</button>' +
+        '<button class="dialog-confirm">Удалить</button>' +
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('.dialog-cancel').onclick = function() { overlay.remove(); };
+  overlay.querySelector('.dialog-confirm').onclick = function() { overlay.remove(); onConfirm(); };
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+}
+
+// ==================== Statistics ====================
+function renderStats(stats, history) {
+  var html = '';
+
+  html += '<div class="stats-grid">';
+  html += '<div class="stat-card highlight"><div class="stat-value">' + stats.totalCount + '</div><div class="stat-label">Подписок</div></div>';
+
+  if (stats.nextPayment) {
+    var npDate = formatDateLocal(stats.nextPayment.date);
+    html += '<div class="stat-card"><div class="stat-value" style="font-size:15px;">' + escHtml(stats.nextPayment.name) + '</div>' +
+      '<div class="stat-sub">' + formatAmount(stats.nextPayment.amount) + ' ' + escHtml(stats.nextPayment.currency) + '</div>' +
+      '<div class="stat-label">' + npDate + '</div></div>';
+  } else {
+    html += '<div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Ближайшая</div></div>';
+  }
+  html += '</div>';
+
+  if (stats.byCategory && stats.byCategory.length) {
+    html += '<div class="section-title">📂 По категориям (в мес.)</div>';
+    html += '<div class="cat-section">';
+
+    var maxTotal = 0;
+    for (var i = 0; i < stats.byCategory.length; i++) {
+      var cat = stats.byCategory[i];
+      var total = 0;
+      for (var j = 0; j < cat.amounts.length; j++) total += cat.amounts[j].monthly;
+      if (total > maxTotal) maxTotal = total;
+    }
+
+    for (var i = 0; i < stats.byCategory.length; i++) {
+      var cat = stats.byCategory[i];
+      var amtParts = [];
+      var total = 0;
+      for (var j = 0; j < cat.amounts.length; j++) {
+        amtParts.push(formatAmount(cat.amounts[j].monthly) + ' ' + cat.amounts[j].currency);
+        total += cat.amounts[j].monthly;
+      }
+      var pct = maxTotal > 0 ? Math.round(total / maxTotal * 100) : 0;
+      var valText = amtParts.join(', ');
+
+      html += '<div class="cat-row">';
+      html += '<span class="cat-name">' + escHtml(cat.category) + '</span>';
+      html += '<div class="cat-bar-wrap"><div class="cat-bar" style="width:' + Math.max(pct, 3) + '%">';
+      if (pct > 30) html += '<span class="cat-bar-val">' + valText + '</span>';
+      html += '</div></div>';
+      if (pct <= 30) html += '<span class="cat-bar-val-outside">' + valText + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  if (history && history.length) {
+    html += '<div class="section-title">🕐 Последние оплаты</div>';
+    html += '<div class="history-section">';
+    for (var i = 0; i < history.length; i++) {
+      var h = history[i];
+      html += '<div class="history-item">' +
+        '<div><div class="history-name">' + escHtml(h.name) + '</div>' +
+        '<div class="history-date">' + (h.date ? formatDateLocal(h.date) : '—') + '</div></div>' +
+        '<div class="history-amount">' + formatAmount(h.amount) + ' ' + escHtml(h.currency) + '</div>' +
+      '</div>';
+    }
+    html += '</div>';
+  }
+
+  document.getElementById('stats-content').innerHTML = html;
+}
+
+// ==================== Settings ====================
+function renderSettings(s) {
+  var html = '';
+
+  html += '<div class="settings-group">';
+  html += '<div class="settings-item"><span class="settings-label">Валюта по умолчанию</span><span>' + escHtml(s.defaultCurrency) + '</span></div>';
+  html += '<div class="settings-item"><span class="settings-label">Email уведомлений</span><span style="font-size:12px;color:var(--text-secondary)">' + (s.email ? escHtml(s.email) : '—') + '</span></div>';
+  html += '<div class="settings-item"><span class="settings-label">Календарь</span><span style="font-size:12px;color:var(--text-secondary)">' + escHtml(s.calendarName) + '</span></div>';
+  html += '</div>';
+
+  html += '<button class="btn-settings" onclick="handleSyncCalendar()">🔄 Синхронизировать календарь</button>';
+
+  if (s.sheetUrl) {
+    html += '<a class="settings-link" href="' + escAttr(s.sheetUrl) + '" target="_blank">📄 Открыть таблицу</a>';
+  }
+
+  html += '<div style="text-align:center;margin-top:24px;color:var(--text-secondary);font-size:12px;">💳 Семейный трекер подписок<br>Настройки редактируются в Google Sheets</div>';
+
+  document.getElementById('settings-content').innerHTML = html;
+}
+
+function handleSyncCalendar() {
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function() { hideLoading(); showToast('Календарь синхронизирован', 'success'); })
+    .withFailureHandler(function(e) { hideLoading(); showToast('Ошибка: ' + (e && e.message ? e.message : ''), 'error'); })
+    .syncCalendar();
+}
+
+// ==================== Helpers ====================
+function formatDateLocal(isoStr) {
+  if (!isoStr) return '—';
+  var d = new Date(isoStr);
+  var day = ('0' + d.getDate()).slice(-2);
+  var month = ('0' + (d.getMonth() + 1)).slice(-2);
+  return day + '.' + month + '.' + d.getFullYear();
+}
+
+function formatAmount(n) {
+  if (n === null || n === undefined) return '0';
+  var num = parseFloat(n);
+  if (isNaN(num)) return '0';
+  var parts = num.toFixed(2).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  if (parts[1] === '00') return parts[0];
+  return parts.join(',');
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escAttr(str) {
+  return escHtml(str);
+}
+
+// ==================== Init ====================
+document.addEventListener('DOMContentLoaded', function() {
+  var tabs = document.querySelectorAll('.nav-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function(e) {
+      e.preventDefault();
+      navigate(this.getAttribute('href'));
+    });
+  }
+
+  document.getElementById('header-action').addEventListener('click', function(e) {
+    e.preventDefault();
+    navigate('add');
+  });
+
+  hideLoading();
+  showView('subscriptions');
+});
+</script>

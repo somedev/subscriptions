@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Подписки">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💳</text></svg>">
+</head>
+<body>
+
+  <!-- Загрузка -->
+  <div id="loading" class="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Тост -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Хедер -->
+  <header id="header">
+    <h1 id="header-title">💳 Подписки</h1>
+    <button id="header-action" class="header-btn hidden">+</button>
+  </header>
+
+  <!-- Контент -->
+  <main id="content">
+
+    <!-- Список подписок -->
+    <div id="view-subscriptions" class="view">
+      <div id="subscriptions-list"></div>
+    </div>
+
+    <!-- Форма добавления/редактирования -->
+    <div id="view-form" class="view hidden">
+      <form id="sub-form" onsubmit="handleFormSubmit(event)">
+        <div class="form-group">
+          <label for="f-name">Название *</label>
+          <input type="text" id="f-name" required placeholder="Netflix, Spotify...">
+        </div>
+        <div class="form-group">
+          <label for="f-category">Категория</label>
+          <select id="f-category"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="f-amount">Сумма *</label>
+            <input type="number" id="f-amount" required min="0.01" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group flex-1">
+            <label for="f-currency">Валюта</label>
+            <select id="f-currency"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="f-period">Период</label>
+            <select id="f-period"></select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="f-date">Дата оплаты *</label>
+            <input type="date" id="f-date" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-payer">Кто платит</label>
+          <select id="f-payer"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label for="f-method">Способ оплаты</label>
+          <select id="f-method"><option value="">—</option></select>
+        </div>
+        <div class="form-group toggle-row">
+          <label for="f-notify">Уведомления</label>
+          <label class="toggle">
+            <input type="checkbox" id="f-notify" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="f-notes">Примечания</label>
+          <textarea id="f-notes" rows="2" placeholder="Заметки..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full" id="form-submit">💾 Сохранить</button>
+        <button type="button" class="btn btn-danger btn-full hidden" id="form-delete" onclick="handleDelete()">🗑 Удалить</button>
+      </form>
+    </div>
+
+    <!-- Статистика -->
+    <div id="view-stats" class="view hidden">
+      <div id="stats-content"></div>
+    </div>
+
+    <!-- Настройки -->
+    <div id="view-settings" class="view hidden">
+      <div id="settings-content"></div>
+    </div>
+
+  </main>
+
+  <!-- Нижняя навигация -->
+  <nav id="bottom-nav">
+    <a href="#/subscriptions" class="nav-tab active" data-view="subscriptions">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">Подписки</span>
+    </a>
+    <a href="#/add" class="nav-tab" data-view="form">
+      <span class="nav-icon">➕</span>
+      <span class="nav-label">Добавить</span>
+    </a>
+    <a href="#/stats" class="nav-tab" data-view="stats">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Статистика</span>
+    </a>
+    <a href="#/settings" class="nav-tab" data-view="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Настройки</span>
+    </a>
+  </nav>
+
+  <?!= include('Stylesheet') ?>
+  <?!= include('JavaScript') ?>
+
+</body>
+</html>

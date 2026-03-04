@@ -10,12 +10,13 @@ A Google Sheets + Apps Script + Google Calendar system for tracking family subsc
 - **Google Apps Script** (JavaScript ES6-compatible, V8 runtime) — automation, triggers, calendar sync, email notifications
 - **Google Calendar API** (via Apps Script CalendarApp) — push notifications on all devices
 - **HTML Service** (Apps Script) — sidebar forms for data entry
+- **Web App** (Apps Script doGet) — mobile-friendly SPA interface
 
 ## Project Structure
 
 ```
 src/
-├── Code.gs                  # Entry point: onOpen(), custom menu
+├── Code.gs                  # Entry point: onOpen(), doGet(), custom menu
 ├── Config.gs                # Constants: sheet names, column indices, defaults
 ├── Setup.gs                 # initialSetup() — creates sheets, formatting, triggers
 ├── DailyCheck.gs            # dailyCheck() — daily trigger, reminder logic
@@ -25,8 +26,12 @@ src/
 ├── Statistics.gs             # updateStatistics() — dedicated statistics sheet
 ├── Utils.gs                 # Helpers: addMonths(), getSettings(), etc.
 ├── AddSubscription.gs       # Sidebar dialog for adding subscriptions
-└── AddSubscriptionForm.html # HTML form for the sidebar
-appsscript.json              # Manifest with scopes and timezone
+├── AddSubscriptionForm.html # HTML form for the sidebar
+├── WebApi.gs                # Server-side API for the mobile web app
+├── Index.html               # Web app shell: HTML structure, nav, views
+├── Stylesheet.html          # Mobile-first CSS (included via template)
+└── JavaScript.html          # Client-side routing, rendering, API calls
+appsscript.json              # Manifest with scopes, timezone, webapp config
 ```
 
 ## Key Design Decisions
@@ -36,6 +41,7 @@ appsscript.json              # Manifest with scopes and timezone
 3. **Calendar as notification layer** — we create a dedicated calendar "💳 Подписки" and add all-day events with popup reminders so users get native push notifications on iPhone, Mac, and web
 4. **No external dependencies** — pure Apps Script, no npm packages, no external APIs
 5. **Script Properties for state** — use `PropertiesService.getScriptProperties()` to track last reminder dates and avoid duplicate notifications
+6. **Mobile Web App** — deployed as Apps Script Web App via `doGet()`, vanilla JS SPA with hash routing, card-based UI, bottom navigation. Reads/writes the same Google Sheet data
 
 ## Important Constants (Config.gs)
 
