@@ -41,7 +41,7 @@ appsscript.json              # Manifest with scopes, timezone, webapp config
 3. **Calendar as notification layer** — we create a dedicated calendar "💳 Подписки" and add all-day events with popup reminders so users get native push notifications on iPhone, Mac, and web
 4. **No external dependencies** — pure Apps Script, no npm packages, no external APIs
 5. **Script Properties for state** — use `PropertiesService.getScriptProperties()` to track last reminder dates and avoid duplicate notifications
-6. **Mobile Web App** — deployed as Apps Script Web App via `doGet()`, vanilla JS SPA with hash routing, card-based UI, bottom navigation. Reads/writes the same Google Sheet data
+6. **Mobile Web App** — deployed as Apps Script Web App via `doGet()`, vanilla JS SPA with onclick-based routing, card-based UI, bottom navigation. Single `getAllDataApi()` call fetches all data at once, client-side caching for instant tab switching
 
 ## Important Constants (Config.gs)
 
@@ -121,6 +121,28 @@ event.addPopupReminder(daysBeforeInMinutes); // e.g., 3 days = 4320 min
 event.addPopupReminder(0); // on the day
 ```
 
+## Web App Architecture
+
+The mobile web app (`doGet()` → `Index.html`) uses a single-page architecture:
+
+- **One server call** — `getAllDataApi()` returns subscriptions + stats + history + settings in a single `google.script.run` round-trip
+- **Client-side cache** — data stored in JS `state` object; tab switches render from cache instantly
+- **Direct `google.script.run` callbacks** — no Promises or `.apply()` (unreliable in Apps Script sandbox)
+- **onclick routing** — no `hashchange` events (unreliable in sandbox iframe); nav tabs use `onclick` → `showView()`
+- **Refresh after mutations** — `refreshData()` re-fetches all data after add/edit/delete/pay operations
+- **Edit from cache** — tapping a subscription card fills the edit form from cached data (no extra server call)
+
+### Web App API functions (WebApi.gs)
+
+| Function | Purpose |
+|----------|---------|
+| `getAllDataApi()` | Returns all data in one call (used on initial load) |
+| `getSubscriptionApi(rowIndex)` | Single subscription (fallback for edit) |
+| `addSubscriptionApi(data)` | Add new subscription |
+| `updateSubscriptionApi(rowIndex, data)` | Update existing subscription |
+| `deleteSubscriptionApi(rowIndex)` | Delete subscription + calendar event |
+| `markAsPaidApi(rowIndex)` | Confirm payment (reuses `confirmPayment()`) |
+
 ## Testing
 
 - Run `initialSetup()` first — it creates everything
@@ -129,6 +151,7 @@ event.addPopupReminder(0); // on the day
 - Run `syncCalendar()` — verify calendar events created
 - Run `dailyCheck()` manually — check email delivery
 - Verify conditional formatting colors
+- Deploy web app and test on mobile: all 4 views, payment confirmation, add/edit/delete
 
 ## Gotchas & Tips
 
@@ -143,6 +166,8 @@ event.addPopupReminder(0); // on the day
 - Always use `Utilities.formatDate(date, 'Europe/Minsk', 'dd.MM.yyyy')` for date formatting
 - Formulas use **European locale**: `;` as argument separator, `,` as decimal separator (e.g., `=IF(A1>0;A1*4,33;0)`)
 - Custom periods supported: besides standard (Месяц, Квартал, etc.), users can enter "N мес." (e.g., "2 мес.", "5 мес.")
+- **Web App sandbox limitations**: `addMetaTag()` only supports `viewport` — Apple meta tags must go directly in HTML `<head>`. `hashchange` and `Promise.apply()` are unreliable — use onclick handlers and direct `google.script.run` calls instead
+- **Web App scope**: requires `spreadsheets` (not `spreadsheets.currentonly`) in manifest for `doGet()` context. `getActiveSpreadsheet().getUrl()` may fail — wrap in try-catch
 
 ## Scope Boundaries
 
@@ -155,9 +180,9 @@ event.addPopupReminder(0); // on the day
 - Statistics dashboard
 - Conditional formatting
 - Russian localization
+- Mobile web app (view, add, edit, delete, pay, stats, settings)
 
 **Out of scope (v2+):**
-- Web App standalone UI
 - Telegram bot
 - Charts/graphs
 - Bank CSV import
