@@ -1,27 +1,14 @@
 <script>
 // ==================== State ====================
 var state = {
-  subscriptions: [],
+  subscriptions: null,
+  stats: null,
+  history: null,
   settings: null,
   currentEditRow: null,
-  currentView: null
+  currentView: null,
+  dataLoaded: false
 };
-
-// ==================== Server Calls ====================
-function callServer(fnName, arg1, arg2) {
-  return new Promise(function(resolve, reject) {
-    var runner = google.script.run
-      .withSuccessHandler(resolve)
-      .withFailureHandler(reject);
-    if (arg2 !== undefined) {
-      runner[fnName](arg1, arg2);
-    } else if (arg1 !== undefined) {
-      runner[fnName](arg1);
-    } else {
-      runner[fnName]();
-    }
-  });
-}
 
 // ==================== Loading & Toast ====================
 function showLoading() {
@@ -46,9 +33,37 @@ function showError(containerId, msg) {
   if (el) el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>' + escHtml(msg) + '</p></div>';
 }
 
+// ==================== Data Loading (single call) ====================
+function loadAllData(callback) {
+  if (state.dataLoaded) {
+    if (callback) callback();
+    return;
+  }
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function(data) {
+      state.subscriptions = data.subscriptions || [];
+      state.stats = data.stats;
+      state.history = data.history || [];
+      state.settings = data.settings;
+      state.dataLoaded = true;
+      hideLoading();
+      if (callback) callback();
+    })
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showError('subscriptions-list', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная'));
+    })
+    .getAllDataApi();
+}
+
+function refreshData(callback) {
+  state.dataLoaded = false;
+  loadAllData(callback);
+}
+
 // ==================== Routing ====================
 function navigate(route) {
-  // Accept both "#/stats" and "stats" format
   route = route.replace('#/', '').replace('#', '');
   var parts = route.split('/');
   var view = parts[0] || 'subscriptions';
@@ -57,16 +72,13 @@ function navigate(route) {
 }
 
 function showView(view, param) {
-  // Hide all views
   var views = document.querySelectorAll('.view');
   for (var i = 0; i < views.length; i++) views[i].classList.add('hidden');
 
-  // Reset header
   var title = document.getElementById('header-title');
   var action = document.getElementById('header-action');
   action.classList.add('hidden');
 
-  // Update nav
   var tabs = document.querySelectorAll('.nav-tab');
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
 
@@ -78,7 +90,7 @@ function showView(view, param) {
       title.textContent = '💳 Подписки';
       action.classList.remove('hidden');
       setActiveTab('subscriptions');
-      loadSubscriptions();
+      loadAllData(function() { renderSubscriptions(state.subscriptions); });
       break;
     case 'add':
       document.getElementById('view-form').classList.remove('hidden');
@@ -86,25 +98,34 @@ function showView(view, param) {
       setActiveTab('form');
       state.currentEditRow = null;
       resetForm();
-      loadFormOptions();
+      loadAllData(function() { populateFormOptions(state.settings); });
       break;
     case 'edit':
       document.getElementById('view-form').classList.remove('hidden');
       title.textContent = '✏️ Редактирование';
       state.currentEditRow = parseInt(param);
-      loadEditForm(state.currentEditRow);
+      loadAllData(function() {
+        populateFormOptions(state.settings);
+        loadEditData(state.currentEditRow);
+      });
       break;
     case 'stats':
       document.getElementById('view-stats').classList.remove('hidden');
       title.textContent = '📊 Статистика';
       setActiveTab('stats');
-      loadStats();
+      loadAllData(function() {
+        try { renderStats(state.stats, state.history); }
+        catch (e) { showError('stats-content', 'Ошибка: ' + e.message); }
+      });
       break;
     case 'settings':
       document.getElementById('view-settings').classList.remove('hidden');
       title.textContent = '⚙️ Настройки';
       setActiveTab('settings');
-      loadSettings();
+      loadAllData(function() {
+        try { renderSettings(state.settings); }
+        catch (e) { showError('settings-content', 'Ошибка: ' + e.message); }
+      });
       break;
     default:
       showView('subscriptions');
@@ -121,21 +142,6 @@ function setActiveTab(view) {
 }
 
 // ==================== Subscriptions List ====================
-function loadSubscriptions() {
-  showLoading();
-  google.script.run
-    .withSuccessHandler(function(data) {
-      hideLoading();
-      state.subscriptions = data || [];
-      renderSubscriptions(state.subscriptions);
-    })
-    .withFailureHandler(function(e) {
-      hideLoading();
-      showError('subscriptions-list', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
-    })
-    .getSubscriptionsApi();
-}
-
 function renderSubscriptions(subs) {
   var container = document.getElementById('subscriptions-list');
 
@@ -228,7 +234,10 @@ function handlePay(e, rowIndex) {
   google.script.run
     .withSuccessHandler(function(result) {
       showToast('✅ ' + result.name + ' оплачено', 'success');
-      setTimeout(function() { loadSubscriptions(); }, 500);
+      // Refresh data and re-render
+      refreshData(function() {
+        if (state.currentView === 'subscriptions') renderSubscriptions(state.subscriptions);
+      });
     })
     .withFailureHandler(function(err) {
       showToast('Ошибка: ' + (err && err.message ? err.message : 'неизвестная'), 'error');
@@ -250,23 +259,8 @@ function resetForm() {
   document.getElementById('f-date').value = today.toISOString().split('T')[0];
 }
 
-function loadFormOptions() {
-  if (state.settings) {
-    populateFormOptions(state.settings);
-    return;
-  }
-  google.script.run
-    .withSuccessHandler(function(s) {
-      state.settings = s;
-      populateFormOptions(s);
-    })
-    .withFailureHandler(function() {
-      showToast('Ошибка загрузки настроек', 'error');
-    })
-    .getSettingsApi();
-}
-
 function populateFormOptions(s) {
+  if (!s) return;
   fillSelect('f-category', s.categories);
   fillSelect('f-currency', s.currencies, s.defaultCurrency);
   fillSelect('f-period', s.periods);
@@ -296,32 +290,48 @@ function fillSelect(id, options, defaultVal) {
   }
 }
 
-function loadEditForm(rowIndex) {
-  showLoading();
-  loadFormOptions();
-  google.script.run
-    .withSuccessHandler(function(sub) {
-      hideLoading();
-      document.getElementById('f-name').value = sub.name;
-      document.getElementById('f-category').value = sub.category;
-      document.getElementById('f-amount').value = sub.amount;
-      document.getElementById('f-currency').value = sub.currency;
-      document.getElementById('f-period').value = sub.period;
-      if (sub.nextDate) {
-        document.getElementById('f-date').value = sub.nextDate.split('T')[0];
+function loadEditData(rowIndex) {
+  // Find subscription in cached data
+  var sub = null;
+  if (state.subscriptions) {
+    for (var i = 0; i < state.subscriptions.length; i++) {
+      if (state.subscriptions[i].rowIndex === rowIndex) {
+        sub = state.subscriptions[i];
+        break;
       }
-      document.getElementById('f-notify').checked = sub.notify;
-      document.getElementById('f-payer').value = sub.payer || '';
-      document.getElementById('f-method').value = sub.payMethod || '';
-      document.getElementById('f-notes').value = sub.notes || '';
-      document.getElementById('form-delete').classList.remove('hidden');
-    })
-    .withFailureHandler(function(e) {
-      hideLoading();
-      showToast('Ошибка загрузки', 'error');
-      navigate('subscriptions');
-    })
-    .getSubscriptionApi(rowIndex);
+    }
+  }
+
+  if (sub) {
+    fillEditForm(sub);
+  } else {
+    // Fallback: fetch from server
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function(s) { hideLoading(); fillEditForm(s); })
+      .withFailureHandler(function(e) {
+        hideLoading();
+        showToast('Ошибка загрузки', 'error');
+        navigate('subscriptions');
+      })
+      .getSubscriptionApi(rowIndex);
+  }
+}
+
+function fillEditForm(sub) {
+  document.getElementById('f-name').value = sub.name;
+  document.getElementById('f-category').value = sub.category;
+  document.getElementById('f-amount').value = sub.amount;
+  document.getElementById('f-currency').value = sub.currency;
+  document.getElementById('f-period').value = sub.period;
+  if (sub.nextDate) {
+    document.getElementById('f-date').value = sub.nextDate.split('T')[0];
+  }
+  document.getElementById('f-notify').checked = sub.notify;
+  document.getElementById('f-payer').value = sub.payer || '';
+  document.getElementById('f-method').value = sub.payMethod || '';
+  document.getElementById('f-notes').value = sub.notes || '';
+  document.getElementById('form-delete').classList.remove('hidden');
 }
 
 function handleFormSubmit(e) {
@@ -354,7 +364,7 @@ function handleFormSubmit(e) {
   function onSuccess() {
     hideLoading();
     showToast('Подписка сохранена', 'success');
-    navigate('subscriptions');
+    refreshData(function() { navigate('subscriptions'); });
   }
   function onError(err) {
     hideLoading();
@@ -378,7 +388,7 @@ function handleDelete() {
       .withSuccessHandler(function() {
         hideLoading();
         showToast('Подписка удалена', 'success');
-        navigate('subscriptions');
+        refreshData(function() { navigate('subscriptions'); });
       })
       .withFailureHandler(function(e) {
         hideLoading();
@@ -408,42 +418,9 @@ function showConfirmDialog(title, msg, onConfirm) {
 }
 
 // ==================== Statistics ====================
-function loadStats() {
-  showLoading();
-  document.getElementById('stats-content').innerHTML = '<div style="text-align:center;padding:20px;color:#5f6368;">Загрузка...</div>';
-
-  google.script.run
-    .withSuccessHandler(function(statsData) {
-      google.script.run
-        .withSuccessHandler(function(historyData) {
-          hideLoading();
-          try {
-            renderStats(statsData, historyData || []);
-          } catch (e) {
-            showError('stats-content', 'Ошибка отображения: ' + e.message);
-          }
-        })
-        .withFailureHandler(function() {
-          hideLoading();
-          try {
-            renderStats(statsData, []);
-          } catch (e) {
-            showError('stats-content', 'Ошибка отображения: ' + e.message);
-          }
-        })
-        .getHistoryApi(10);
-    })
-    .withFailureHandler(function(e) {
-      hideLoading();
-      showError('stats-content', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
-    })
-    .getStatsApi();
-}
-
 function renderStats(stats, history) {
   var html = '';
 
-  // Metric cards
   html += '<div class="stats-grid">';
   html += '<div class="stat-card highlight"><div class="stat-value">' + stats.totalCount + '</div><div class="stat-label">Подписок</div></div>';
 
@@ -457,7 +434,6 @@ function renderStats(stats, history) {
   }
   html += '</div>';
 
-  // Category breakdown
   if (stats.byCategory && stats.byCategory.length) {
     html += '<div class="section-title">📂 По категориям (в мес.)</div>';
     html += '<div class="cat-section">';
@@ -492,7 +468,6 @@ function renderStats(stats, history) {
     html += '</div>';
   }
 
-  // Recent payments
   if (history && history.length) {
     html += '<div class="section-title">🕐 Последние оплаты</div>';
     html += '<div class="history-section">';
@@ -511,36 +486,6 @@ function renderStats(stats, history) {
 }
 
 // ==================== Settings ====================
-function loadSettings() {
-  document.getElementById('settings-content').innerHTML = '<div style="text-align:center;padding:20px;color:#5f6368;">Загрузка...</div>';
-
-  if (state.settings) {
-    try {
-      renderSettings(state.settings);
-    } catch (e) {
-      showError('settings-content', 'Ошибка: ' + e.message);
-    }
-    return;
-  }
-
-  showLoading();
-  google.script.run
-    .withSuccessHandler(function(s) {
-      hideLoading();
-      state.settings = s;
-      try {
-        renderSettings(s);
-      } catch (e) {
-        showError('settings-content', 'Ошибка: ' + e.message);
-      }
-    })
-    .withFailureHandler(function(e) {
-      hideLoading();
-      showError('settings-content', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
-    })
-    .getSettingsApi();
-}
-
 function renderSettings(s) {
   var html = '';
 
@@ -598,31 +543,20 @@ function escAttr(str) {
 }
 
 // ==================== Init ====================
-// Use onclick handlers on nav tabs instead of hashchange
 document.addEventListener('DOMContentLoaded', function() {
-  // Set up nav tab click handlers
   var tabs = document.querySelectorAll('.nav-tab');
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].addEventListener('click', function(e) {
       e.preventDefault();
-      var href = this.getAttribute('href');
-      navigate(href);
+      navigate(this.getAttribute('href'));
     });
   }
 
-  // Set up header add button
   document.getElementById('header-action').addEventListener('click', function(e) {
     e.preventDefault();
     navigate('add');
   });
 
-  // Preload settings
-  google.script.run
-    .withSuccessHandler(function(s) { state.settings = s; })
-    .withFailureHandler(function() {})
-    .getSettingsApi();
-
-  // Show initial view
   hideLoading();
   showView('subscriptions');
 });
