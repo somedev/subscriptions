@@ -15,19 +15,18 @@ A Google Sheets + Apps Script + Google Calendar system for tracking family subsc
 
 ```
 src/
-├── Code.gs              # Entry point: onOpen(), custom menu
-├── Config.gs            # Constants: sheet names, column indices, defaults
-├── Setup.gs             # initialSetup() — creates sheets, formatting, triggers
-├── DailyCheck.gs        # dailyCheck() — daily trigger, reminder logic
-├── CalendarSync.gs      # syncCalendar() — calendar CRUD
-├── PaymentConfirm.gs    # confirmPayment() — mark paid, log, advance date
-├── Notifications.gs     # sendReminder() — email notifications
-├── Statistics.gs        # updateStatistics() — dashboard refresh
-├── Utils.gs             # Helpers: addMonths(), getSettings(), etc.
-├── AddSubscription.gs   # Sidebar dialog for adding subscriptions
-src/html/
-└── AddSubscription.html # HTML form for the sidebar
-appsscript.json          # Manifest with scopes and timezone
+├── Code.gs                  # Entry point: onOpen(), custom menu
+├── Config.gs                # Constants: sheet names, column indices, defaults
+├── Setup.gs                 # initialSetup() — creates sheets, formatting, triggers
+├── DailyCheck.gs            # dailyCheck() — daily trigger, reminder logic
+├── CalendarSync.gs          # syncCalendar() — calendar CRUD
+├── PaymentConfirm.gs        # confirmPayment() — mark paid, log, advance date
+├── Notifications.gs         # sendReminder() — email notifications
+├── Statistics.gs             # updateStatistics() — dedicated statistics sheet
+├── Utils.gs                 # Helpers: addMonths(), getSettings(), etc.
+├── AddSubscription.gs       # Sidebar dialog for adding subscriptions
+└── AddSubscriptionForm.html # HTML form for the sidebar
+appsscript.json              # Manifest with scopes and timezone
 ```
 
 ## Key Design Decisions
@@ -45,6 +44,7 @@ const SHEET_SUBSCRIPTIONS = 'Подписки';
 const SHEET_HISTORY = 'История оплат';
 const SHEET_SETTINGS = 'Настройки';
 const SHEET_LOOKUPS = 'Справочники';
+const SHEET_STATISTICS = '📊 Статистика';
 
 // Column indices (0-based) for "Подписки" sheet
 const COL = {
@@ -134,7 +134,9 @@ event.addPopupReminder(0); // on the day
 - When hiding a column: `sheet.hideColumns(columnIndex)` — 1-based index
 - Dates in Sheets come as JavaScript `Date` objects when read via `getValues()`
 - For checkboxes, use `sheet.insertCheckboxes()` or data validation with TRUE/FALSE
-- Always use `Utilities.formatDate(date, 'Europe/Moscow', 'dd.MM.yyyy')` for Russian date formatting
+- Always use `Utilities.formatDate(date, 'Europe/Minsk', 'dd.MM.yyyy')` for date formatting
+- Formulas use **European locale**: `;` as argument separator, `,` as decimal separator (e.g., `=IF(A1>0;A1*4,33;0)`)
+- Custom periods supported: besides standard (Месяц, Квартал, etc.), users can enter "N мес." (e.g., "2 мес.", "5 мес.")
 
 ## Scope Boundaries
 
@@ -151,7 +153,6 @@ event.addPopupReminder(0); // on the day
 **Out of scope (v2+):**
 - Web App standalone UI
 - Telegram bot
-- Currency conversion
 - Charts/graphs
 - Bank CSV import
 - Budget threshold alerts

@@ -19,6 +19,7 @@ A family subscription and recurring payment tracking system built on Google Shee
 │  Sheet 2: "История оплат" (Payment History)         │
 │  Sheet 3: "Настройки" (Settings)                    │
 │  Sheet 4: "Справочники" (Dropdowns/Lookups)         │
+│  Sheet 5: "📊 Статистика" (Statistics Dashboard)    │
 │                                                      │
 ├─────────────────────────────────────────────────────┤
 │                Google Apps Script                     │
@@ -49,9 +50,9 @@ A family subscription and recurring payment tracking system built on Google Shee
 |--------|-------------|------|-------------|
 | A | ID | Auto-number | Unique identifier (auto-generated, do not edit) |
 | B | Название | Text | Subscription/payment name (e.g., "Netflix", "Аренда", "Spotify Family") |
-| C | Категория | Dropdown | Category: Стриминг, Софт, Связь, Жильё, Страховка, Здоровье, Образование, Другое |
+| C | Категория | Dropdown | Category: Стриминг, Софт, Связь, Жильё, Страховка, Здоровье, Образование, Авто, Другое |
 | D | Сумма | Number (currency) | Payment amount per period |
-| E | Валюта | Dropdown | RUB, USD, EUR, other |
+| E | Валюта | Dropdown | BYN, RUB, USD, EUR |
 | F | Период | Dropdown | Месяц, Квартал, Полгода, Год, Неделя |
 | G | Дата следующей оплаты | Date | Next payment due date |
 | H | Статус | Dropdown | Активна / Приостановлена / Отменена |
@@ -87,16 +88,18 @@ A family subscription and recurring payment tracking system built on Google Shee
 | 2 | Email для уведомлений | comma-separated emails |
 | 3 | Время ежедневной проверки | 09:00 |
 | 4 | Члены семьи | comma-separated names (e.g., "Алексей, Мария, Дети") |
-| 5 | Валюта по умолчанию | RUB |
+| 5 | Валюта по умолчанию | BYN |
 
 ### Sheet 4: "Справочники" (Dropdown Data)
 
 Contains named lists for data validation dropdowns:
-- Column A: Категории (categories list)
+- Column A: Категории (Стриминг, Софт, Связь, Жильё, Страховка, Здоровье, Образование, Авто, Другое)
 - Column B: Периоды (Месяц, Квартал, Полгода, Год, Неделя)
-- Column C: Валюты (RUB, USD, EUR)
+- Column C: Валюты (BYN, RUB, USD, EUR)
 - Column D: Способы оплаты (Карта, Автосписание, Перевод, Наличные)
 - Column E: Статусы (Активна, Приостановлена, Отменена)
+- Column G: Валюта (currency code for exchange rate lookup)
+- Column H: Курс к {default currency} (exchange rate via GOOGLEFINANCE, auto-updating)
 
 ---
 
@@ -164,6 +167,7 @@ Logic:
    - Квартал → add 3 months
    - Полгода → add 6 months
    - Год → add 1 year
+   - Custom "N мес." (e.g., "2 мес.", "5 мес.") → add N months
 5. Update the row:
    - "Дата следующей оплаты" = new calculated date
    - "Последняя оплата" = today
@@ -197,17 +201,24 @@ Body:
 
 Recipients: all emails from Settings row "Email для уведомлений"
 
-### 6. Statistics / Dashboard
+### 6. Statistics Dashboard
 
-Create a summary section on the "Подписки" sheet below the data table (starting from row 50 or a clearly separated area), OR create a dedicated "Дашборд" sheet with:
+Function: `updateStatistics()`
 
-- **Общая сумма/мес** — `=SUMIF(H:H,"Активна",P:P)` — total monthly cost
-- **Общая сумма/год** — monthly × 12
-- **По категориям** — SUMIFS grouped by category, showing monthly cost per category
-- **По членам семьи** — SUMIFS grouped by "Кто платит"
-- **Ближайшие 5 оплат** — Top 5 soonest payments (SORT + FILTER on active subscriptions by "Дней до оплаты")
-- **Оплачено за текущий месяц** — SUMIFS on "История оплат" for current month
-- **Всего активных подписок** — COUNTIF on Статус = "Активна"
+Creates/updates a dedicated "📊 Статистика" sheet with multi-currency support. All amounts are converted to the default currency using exchange rates from Справочники columns G-H (via GOOGLEFINANCE).
+
+The sheet has 5 sections arranged in two columns (A-B left, D-E right):
+
+**Left column (A-B):**
+- **Секция 1: 📊 СВОДКА** — Active count (COUNTIF), monthly total (SUMPRODUCT with currency conversion), yearly total (monthly × 12), paid current month (from История оплат)
+- **Секция 2: 📂 ПО КАТЕГОРИЯМ** — Monthly cost per category (all 9 categories), with multi-currency conversion
+- **Секция 3: 👥 ПО ЧЛЕНАМ СЕМЬИ** — Monthly cost per payer (dynamically built from actual data)
+
+**Right column (D-E):**
+- **Секция 4: 📅 ОПЛАТЫ ПО МЕСЯЦАМ** — Last 12 months payment history from История оплат
+- **Секция 5: 📆 ОПЛАТЫ ПО ГОДАМ** — Last 3 years payment totals
+
+Multi-currency conversion uses `buildSubFormula_()` and `buildHistFormula_()` helpers that generate SUMPRODUCT formulas — each currency is summed separately and multiplied by its exchange rate from Справочники.
 
 ### 7. onEdit Trigger (Installable)
 
@@ -224,9 +235,9 @@ Logic:
 Function: `initialSetup()`
 
 Logic:
-1. Create sheets if they don't exist: "Подписки", "История оплат", "Настройки", "Справочники"
+1. Create sheets if they don't exist: "Подписки", "История оплат", "Настройки", "Справочники", "📊 Статистика"
 2. Write headers to each sheet
-3. Set up data validation (dropdowns) on "Подписки" columns C, E, F, H, M, N using ranges from "Справочники"
+3. Set up data validation (dropdowns) on "Подписки" columns C, E, F, H, N using ranges from "Справочники" (Period dropdown allows custom values like "N мес." via `setAllowInvalid(true)`)
 4. Populate "Справочники" with default values
 5. Populate "Настройки" with default settings
 6. Apply conditional formatting to "Подписки":
@@ -242,7 +253,8 @@ Logic:
 10. Freeze row 1 (headers) on "Подписки" sheet
 11. Hide column R (Calendar Event ID)
 12. Set column widths for readability
-13. Show completion dialog: "✅ Настройка завершена! Календарь создан, триггеры установлены."
+13. Run `updateStatistics()` to populate the statistics sheet
+14. Show completion dialog: "✅ Настройка завершена! Календарь создан, триггеры установлены."
 
 ---
 
@@ -261,16 +273,19 @@ Applied to the data range (row 2 downward):
 
 ---
 
-## Formulas (pre-populated in headers, auto-filled for new rows)
+## Formulas (pre-populated for rows 2-100, European locale)
+
+**Note:** All formulas use European locale: `;` as argument separator, `,` as decimal separator.
 
 ### Column P: Monthly cost normalization
 ```
-=IF(H2="Активна", SWITCH(F2, "Месяц",D2, "Квартал",D2/3, "Полгода",D2/6, "Год",D2/12, "Неделя",D2*4.33, 0), 0)
+=IF(H2="Активна";SWITCH(F2;"Месяц";D2;"Квартал";D2/3;"Полгода";D2/6;"Год";D2/12;"Неделя";D2*4,33;IFERROR(D2/VALUE(LEFT(F2;LEN(F2)-5));0));0)
 ```
+The IFERROR fallback handles custom periods like "N мес." by parsing the number from the period string.
 
 ### Column Q: Days until payment
 ```
-=IF(AND(H2="Активна", G2<>""), G2-TODAY(), "")
+=IF(AND(H2="Активна"; G2<>""); G2-TODAY(); "")
 ```
 
 ---
@@ -280,34 +295,35 @@ Applied to the data range (row 2 downward):
 ```
 project/
 ├── src/
-│   ├── Code.gs              # onOpen, custom menu creation, entry points
-│   ├── Config.gs            # Sheet names, column indices, default values (all as constants)
-│   ├── Setup.gs             # initialSetup(), sheet creation, formatting, triggers
-│   ├── DailyCheck.gs        # dailyCheck() — main daily trigger function
-│   ├── CalendarSync.gs      # syncCalendar(), createEvent(), updateEvent(), deleteEvent()
-│   ├── PaymentConfirm.gs    # confirmPayment(), calculateNextDate()
-│   ├── Notifications.gs     # sendReminder(), email template
-│   ├── Statistics.gs        # updateStatistics() — refresh dashboard formulas
-│   ├── Utils.gs             # addMonths(), getSheetByName(), getSettings(), etc.
-│   └── AddSubscription.gs   # showAddDialog(), processAddForm() — sidebar HTML form
-├── src/html/
-│   └── AddSubscription.html # HTML sidebar form for adding new subscriptions
-└── appsscript.json          # Manifest: timezone, OAuth scopes
+│   ├── Code.gs                  # onOpen, custom menu creation, entry points
+│   ├── Config.gs                # Sheet names, column indices, default values (all as constants)
+│   ├── Setup.gs                 # initialSetup(), sheet creation, formatting, triggers
+│   ├── DailyCheck.gs            # dailyCheck() — main daily trigger function
+│   ├── CalendarSync.gs          # syncCalendar(), createEvent(), updateEvent(), deleteEvent()
+│   ├── PaymentConfirm.gs        # confirmPayment(), calculateNextDate()
+│   ├── Notifications.gs         # sendReminder(), email template
+│   ├── Statistics.gs            # updateStatistics() — dedicated statistics sheet with multi-currency
+│   ├── Utils.gs                 # addMonths(), getSheetByName(), getSettings(), etc.
+│   ├── AddSubscription.gs       # showAddDialog(), processAddForm() — sidebar HTML form
+│   └── AddSubscriptionForm.html # HTML sidebar form for adding new subscriptions
+└── appsscript.json              # Manifest: timezone, OAuth scopes
 ```
 
 ### Required OAuth Scopes (appsscript.json)
 
 ```json
 {
-  "timeZone": "Europe/Moscow",
+  "timeZone": "Europe/Minsk",
   "dependencies": {},
   "oauthScopes": [
     "https://www.googleapis.com/auth/spreadsheets.currentonly",
+    "https://www.googleapis.com/auth/script.container.ui",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/script.scriptapp",
-    "https://www.googleapis.com/auth/mail.send"
+    "https://www.googleapis.com/auth/gmail.send"
   ],
-  "exceptionLogging": "STACKDRIVER"
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
 }
 ```
 
