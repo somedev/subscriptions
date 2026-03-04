@@ -1,5 +1,23 @@
 // ==================== Code.gs ====================
-// Точка входа: onOpen(), пользовательское меню
+// Точка входа: onOpen(), doGet(), пользовательское меню
+
+/**
+ * Web App entry point — мобильный интерфейс
+ */
+function doGet(e) {
+  const template = HtmlService.createTemplateFromFile('Index');
+  return template.evaluate()
+    .setTitle('💳 Подписки')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Включение HTML-файлов (CSS, JS) в шаблон
+ */
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
 
 /**
  * Создание пользовательского меню при открытии таблицы
