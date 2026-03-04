@@ -270,24 +270,32 @@ function getStatsApi() {
  * Получить историю оплат
  */
 function getHistoryApi(limit) {
-  const sheet = getSheetByName(SHEET_HISTORY);
-  const data = sheet.getDataRange().getValues();
-  const history = [];
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_HISTORY);
+    if (!sheet) return [];
 
-  // Последние записи (от конца к началу)
-  const start = Math.max(1, data.length - (limit || 10));
-  for (let i = data.length - 1; i >= start; i--) {
-    const row = data[i];
-    if (!row[2]) continue; // Нет названия
-    history.push({
-      date: row[3] ? new Date(row[3]).toISOString() : null,
-      name: row[2],
-      amount: row[4],
-      currency: row[5]
-    });
+    const data = sheet.getDataRange().getValues();
+    const history = [];
+
+    // Последние записи (от конца к началу)
+    const start = Math.max(1, data.length - (limit || 10));
+    for (let i = data.length - 1; i >= start; i--) {
+      const row = data[i];
+      if (!row[2]) continue; // Нет названия
+      history.push({
+        date: row[3] ? new Date(row[3]).toISOString() : null,
+        name: row[2],
+        amount: row[4],
+        currency: row[5]
+      });
+    }
+
+    return history;
+  } catch (e) {
+    console.error('getHistoryApi error: ' + e.message);
+    return [];
   }
-
-  return history;
 }
 
 /**
@@ -297,6 +305,9 @@ function getSettingsApi() {
   const settings = getSettings();
   const familyStr = settings['Члены семьи'] || '';
   const family = familyStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+  let sheetUrl = '';
+  try { sheetUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl(); } catch (e) { /* web app context */ }
 
   return {
     categories: LOOKUP_CATEGORIES,
@@ -308,7 +319,7 @@ function getSettingsApi() {
     email: settings['Email для уведомлений'] || '',
     reminderDays: parseInt(settings['Дней до напоминания']) || 3,
     calendarName: settings['Название календаря'] || '💳 Подписки',
-    sheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl()
+    sheetUrl: sheetUrl
   };
 }
 

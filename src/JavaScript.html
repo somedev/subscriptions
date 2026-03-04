@@ -4,28 +4,31 @@ var state = {
   subscriptions: [],
   settings: null,
   currentEditRow: null,
-  loading: false
+  currentView: null
 };
 
 // ==================== Server Calls ====================
-function callServer(fnName) {
-  var args = Array.prototype.slice.call(arguments, 1);
+function callServer(fnName, arg1, arg2) {
   return new Promise(function(resolve, reject) {
     var runner = google.script.run
       .withSuccessHandler(resolve)
       .withFailureHandler(reject);
-    runner[fnName].apply(runner, args);
+    if (arg2 !== undefined) {
+      runner[fnName](arg1, arg2);
+    } else if (arg1 !== undefined) {
+      runner[fnName](arg1);
+    } else {
+      runner[fnName]();
+    }
   });
 }
 
 // ==================== Loading & Toast ====================
 function showLoading() {
-  state.loading = true;
   document.getElementById('loading').classList.remove('hidden');
 }
 
 function hideLoading() {
-  state.loading = false;
   document.getElementById('loading').classList.add('hidden');
 }
 
@@ -34,20 +37,26 @@ function showToast(msg, type) {
   toast.className = 'toast' + (type ? ' toast-' + type : '');
   toast.textContent = msg;
   toast.classList.remove('hidden');
-  setTimeout(function() { toast.classList.add('hidden'); }, 2500);
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(function() { toast.classList.add('hidden'); }, 3000);
+}
+
+function showError(containerId, msg) {
+  var el = document.getElementById(containerId);
+  if (el) el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>' + escHtml(msg) + '</p></div>';
 }
 
 // ==================== Routing ====================
-function navigate(hash) {
-  window.location.hash = hash;
+function navigate(route) {
+  // Accept both "#/stats" and "stats" format
+  route = route.replace('#/', '').replace('#', '');
+  var parts = route.split('/');
+  var view = parts[0] || 'subscriptions';
+  var param = parts[1];
+  showView(view, param);
 }
 
-function router() {
-  var hash = window.location.hash || '#/subscriptions';
-  var parts = hash.replace('#/', '').split('/');
-  var route = parts[0];
-  var param = parts[1];
-
+function showView(view, param) {
   // Hide all views
   var views = document.querySelectorAll('.view');
   for (var i = 0; i < views.length; i++) views[i].classList.add('hidden');
@@ -61,7 +70,9 @@ function router() {
   var tabs = document.querySelectorAll('.nav-tab');
   for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
 
-  switch (route) {
+  state.currentView = view;
+
+  switch (view) {
     case 'subscriptions':
       document.getElementById('view-subscriptions').classList.remove('hidden');
       title.textContent = '💳 Подписки';
@@ -80,7 +91,6 @@ function router() {
     case 'edit':
       document.getElementById('view-form').classList.remove('hidden');
       title.textContent = '✏️ Редактирование';
-      setActiveTab(null);
       state.currentEditRow = parseInt(param);
       loadEditForm(state.currentEditRow);
       break;
@@ -97,7 +107,7 @@ function router() {
       loadSettings();
       break;
     default:
-      navigate('#/subscriptions');
+      showView('subscriptions');
   }
 }
 
@@ -113,13 +123,17 @@ function setActiveTab(view) {
 // ==================== Subscriptions List ====================
 function loadSubscriptions() {
   showLoading();
-  callServer('getSubscriptionsApi')
-    .then(function(data) {
-      state.subscriptions = data;
-      renderSubscriptions(data);
+  google.script.run
+    .withSuccessHandler(function(data) {
+      hideLoading();
+      state.subscriptions = data || [];
+      renderSubscriptions(state.subscriptions);
     })
-    .catch(function(e) { showToast('Ошибка загрузки', 'error'); })
-    .then(hideLoading);
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showError('subscriptions-list', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
+    })
+    .getSubscriptionsApi();
 }
 
 function renderSubscriptions(subs) {
@@ -130,7 +144,7 @@ function renderSubscriptions(subs) {
       '<div class="empty-state">' +
         '<div class="empty-icon">📋</div>' +
         '<p>Нет подписок</p>' +
-        '<button class="btn btn-primary" onclick="navigate(\'#/add\')">Добавить первую</button>' +
+        '<button class="btn btn-primary" onclick="navigate(\'add\')">Добавить первую</button>' +
       '</div>';
     return;
   }
@@ -184,7 +198,7 @@ function renderCard(s, cls) {
     payBtn = '<button class="btn-pay" onclick="handlePay(event, ' + s.rowIndex + ')" id="pay-' + s.rowIndex + '">✅ Оплачено</button>';
   }
 
-  return '<div class="card ' + cls + '" onclick="navigate(\'#/edit/' + s.rowIndex + '\')">' +
+  return '<div class="card ' + cls + '" onclick="navigate(\'edit/' + s.rowIndex + '\')">' +
     '<div class="card-top">' +
       '<span class="card-name">' + escHtml(s.name) + '</span>' +
       '<span class="card-amount">' + formatAmount(s.amount) + ' ' + escHtml(s.currency) + '</span>' +
@@ -207,23 +221,22 @@ function handlePay(e, rowIndex) {
   var btn = document.getElementById('pay-' + rowIndex);
   if (!btn) return;
 
-  // Optimistic update
   btn.disabled = true;
   btn.textContent = '⏳';
   btn.classList.add('paid');
 
-  callServer('markAsPaidApi', rowIndex)
-    .then(function(result) {
+  google.script.run
+    .withSuccessHandler(function(result) {
       showToast('✅ ' + result.name + ' оплачено', 'success');
-      // Refresh list after short delay
       setTimeout(function() { loadSubscriptions(); }, 500);
     })
-    .catch(function(e) {
-      showToast('Ошибка: ' + e.message, 'error');
+    .withFailureHandler(function(err) {
+      showToast('Ошибка: ' + (err && err.message ? err.message : 'неизвестная'), 'error');
       btn.disabled = false;
       btn.textContent = '✅ Оплачено';
       btn.classList.remove('paid');
-    });
+    })
+    .markAsPaidApi(rowIndex);
 }
 
 // ==================== Add/Edit Form ====================
@@ -233,7 +246,6 @@ function resetForm() {
   document.getElementById('form-delete').classList.add('hidden');
   document.getElementById('form-submit').textContent = '💾 Сохранить';
 
-  // Set default date to today
   var today = new Date();
   document.getElementById('f-date').value = today.toISOString().split('T')[0];
 }
@@ -243,12 +255,15 @@ function loadFormOptions() {
     populateFormOptions(state.settings);
     return;
   }
-  callServer('getSettingsApi')
-    .then(function(s) {
+  google.script.run
+    .withSuccessHandler(function(s) {
       state.settings = s;
       populateFormOptions(s);
     })
-    .catch(function() { showToast('Ошибка загрузки', 'error'); });
+    .withFailureHandler(function() {
+      showToast('Ошибка загрузки настроек', 'error');
+    })
+    .getSettingsApi();
 }
 
 function populateFormOptions(s) {
@@ -284,8 +299,9 @@ function fillSelect(id, options, defaultVal) {
 function loadEditForm(rowIndex) {
   showLoading();
   loadFormOptions();
-  callServer('getSubscriptionApi', rowIndex)
-    .then(function(sub) {
+  google.script.run
+    .withSuccessHandler(function(sub) {
+      hideLoading();
       document.getElementById('f-name').value = sub.name;
       document.getElementById('f-category').value = sub.category;
       document.getElementById('f-amount').value = sub.amount;
@@ -298,12 +314,14 @@ function loadEditForm(rowIndex) {
       document.getElementById('f-payer').value = sub.payer || '';
       document.getElementById('f-method').value = sub.payMethod || '';
       document.getElementById('f-notes').value = sub.notes || '';
-
       document.getElementById('form-delete').classList.remove('hidden');
-      document.getElementById('form-submit').textContent = '💾 Сохранить';
     })
-    .catch(function(e) { showToast('Ошибка загрузки', 'error'); navigate('#/subscriptions'); })
-    .then(hideLoading);
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showToast('Ошибка загрузки', 'error');
+      navigate('subscriptions');
+    })
+    .getSubscriptionApi(rowIndex);
 }
 
 function handleFormSubmit(e) {
@@ -332,29 +350,41 @@ function handleFormSubmit(e) {
   };
 
   showLoading();
-  var fn = state.currentEditRow ? 'updateSubscriptionApi' : 'addSubscriptionApi';
-  var args = state.currentEditRow ? [state.currentEditRow, data] : [data];
 
-  callServer.apply(null, [fn].concat(args))
-    .then(function() {
-      showToast('Подписка сохранена', 'success');
-      navigate('#/subscriptions');
-    })
-    .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); })
-    .then(hideLoading);
+  function onSuccess() {
+    hideLoading();
+    showToast('Подписка сохранена', 'success');
+    navigate('subscriptions');
+  }
+  function onError(err) {
+    hideLoading();
+    showToast('Ошибка: ' + (err && err.message ? err.message : 'неизвестная'), 'error');
+  }
+
+  if (state.currentEditRow) {
+    google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError)
+      .updateSubscriptionApi(state.currentEditRow, data);
+  } else {
+    google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onError)
+      .addSubscriptionApi(data);
+  }
 }
 
 function handleDelete() {
   if (!state.currentEditRow) return;
   showConfirmDialog('Удалить подписку?', 'Это действие нельзя отменить.', function() {
     showLoading();
-    callServer('deleteSubscriptionApi', state.currentEditRow)
-      .then(function() {
+    google.script.run
+      .withSuccessHandler(function() {
+        hideLoading();
         showToast('Подписка удалена', 'success');
-        navigate('#/subscriptions');
+        navigate('subscriptions');
       })
-      .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); })
-      .then(hideLoading);
+      .withFailureHandler(function(e) {
+        hideLoading();
+        showToast('Ошибка: ' + (e && e.message ? e.message : 'неизвестная'), 'error');
+      })
+      .deleteSubscriptionApi(state.currentEditRow);
   });
 }
 
@@ -372,7 +402,6 @@ function showConfirmDialog(title, msg, onConfirm) {
     '</div>';
 
   document.body.appendChild(overlay);
-
   overlay.querySelector('.dialog-cancel').onclick = function() { overlay.remove(); };
   overlay.querySelector('.dialog-confirm').onclick = function() { overlay.remove(); onConfirm(); };
   overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
@@ -381,12 +410,34 @@ function showConfirmDialog(title, msg, onConfirm) {
 // ==================== Statistics ====================
 function loadStats() {
   showLoading();
-  Promise.all([callServer('getStatsApi'), callServer('getHistoryApi', 10)])
-    .then(function(results) {
-      renderStats(results[0], results[1]);
+  document.getElementById('stats-content').innerHTML = '<div style="text-align:center;padding:20px;color:#5f6368;">Загрузка...</div>';
+
+  google.script.run
+    .withSuccessHandler(function(statsData) {
+      google.script.run
+        .withSuccessHandler(function(historyData) {
+          hideLoading();
+          try {
+            renderStats(statsData, historyData || []);
+          } catch (e) {
+            showError('stats-content', 'Ошибка отображения: ' + e.message);
+          }
+        })
+        .withFailureHandler(function() {
+          hideLoading();
+          try {
+            renderStats(statsData, []);
+          } catch (e) {
+            showError('stats-content', 'Ошибка отображения: ' + e.message);
+          }
+        })
+        .getHistoryApi(10);
     })
-    .catch(function() { showToast('Ошибка загрузки', 'error'); })
-    .then(hideLoading);
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showError('stats-content', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
+    })
+    .getStatsApi();
 }
 
 function renderStats(stats, history) {
@@ -396,7 +447,6 @@ function renderStats(stats, history) {
   html += '<div class="stats-grid">';
   html += '<div class="stat-card highlight"><div class="stat-value">' + stats.totalCount + '</div><div class="stat-label">Подписок</div></div>';
 
-  // Next payment
   if (stats.nextPayment) {
     var npDate = formatDateLocal(stats.nextPayment.date);
     html += '<div class="stat-card"><div class="stat-value" style="font-size:15px;">' + escHtml(stats.nextPayment.name) + '</div>' +
@@ -412,7 +462,6 @@ function renderStats(stats, history) {
     html += '<div class="section-title">📂 По категориям (в мес.)</div>';
     html += '<div class="cat-section">';
 
-    // Find max for bar scaling
     var maxTotal = 0;
     for (var i = 0; i < stats.byCategory.length; i++) {
       var cat = stats.byCategory[i];
@@ -463,18 +512,33 @@ function renderStats(stats, history) {
 
 // ==================== Settings ====================
 function loadSettings() {
+  document.getElementById('settings-content').innerHTML = '<div style="text-align:center;padding:20px;color:#5f6368;">Загрузка...</div>';
+
   if (state.settings) {
-    renderSettings(state.settings);
+    try {
+      renderSettings(state.settings);
+    } catch (e) {
+      showError('settings-content', 'Ошибка: ' + e.message);
+    }
     return;
   }
+
   showLoading();
-  callServer('getSettingsApi')
-    .then(function(s) {
+  google.script.run
+    .withSuccessHandler(function(s) {
+      hideLoading();
       state.settings = s;
-      renderSettings(s);
+      try {
+        renderSettings(s);
+      } catch (e) {
+        showError('settings-content', 'Ошибка: ' + e.message);
+      }
     })
-    .catch(function() { showToast('Ошибка загрузки', 'error'); })
-    .then(hideLoading);
+    .withFailureHandler(function(e) {
+      hideLoading();
+      showError('settings-content', 'Ошибка загрузки: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
+    })
+    .getSettingsApi();
 }
 
 function renderSettings(s) {
@@ -499,10 +563,10 @@ function renderSettings(s) {
 
 function handleSyncCalendar() {
   showLoading();
-  callServer('syncCalendar')
-    .then(function() { showToast('Календарь синхронизирован', 'success'); })
-    .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); })
-    .then(hideLoading);
+  google.script.run
+    .withSuccessHandler(function() { hideLoading(); showToast('Календарь синхронизирован', 'success'); })
+    .withFailureHandler(function(e) { hideLoading(); showToast('Ошибка: ' + (e && e.message ? e.message : ''), 'error'); })
+    .syncCalendar();
 }
 
 // ==================== Helpers ====================
@@ -518,10 +582,8 @@ function formatAmount(n) {
   if (n === null || n === undefined) return '0';
   var num = parseFloat(n);
   if (isNaN(num)) return '0';
-  // Format with spaces as thousands separator
   var parts = num.toFixed(2).split('.');
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  // Remove trailing zeros after decimal
   if (parts[1] === '00') return parts[0];
   return parts.join(',');
 }
@@ -536,14 +598,32 @@ function escAttr(str) {
 }
 
 // ==================== Init ====================
-window.addEventListener('hashchange', router);
-window.addEventListener('DOMContentLoaded', function() {
-  // Preload settings
-  callServer('getSettingsApi')
-    .then(function(s) { state.settings = s; })
-    .catch(function() {});
+// Use onclick handlers on nav tabs instead of hashchange
+document.addEventListener('DOMContentLoaded', function() {
+  // Set up nav tab click handlers
+  var tabs = document.querySelectorAll('.nav-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function(e) {
+      e.preventDefault();
+      var href = this.getAttribute('href');
+      navigate(href);
+    });
+  }
 
-  router();
+  // Set up header add button
+  document.getElementById('header-action').addEventListener('click', function(e) {
+    e.preventDefault();
+    navigate('add');
+  });
+
+  // Preload settings
+  google.script.run
+    .withSuccessHandler(function(s) { state.settings = s; })
+    .withFailureHandler(function() {})
+    .getSettingsApi();
+
+  // Show initial view
   hideLoading();
+  showView('subscriptions');
 });
 </script>
